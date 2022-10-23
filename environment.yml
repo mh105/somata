@@ -1,0 +1,19 @@
+# Development conda environment
+# usage: $ mamba env create -f environment.yml
+name: somata
+channels:
+  - conda-forge
+dependencies:
+  - ipdb
+  - joblib
+  - matplotlib
+  - numpy>=1.22
+  - pip
+  - pytest
+  - python>=3.8
+  - scipy
+  - setuptools
+  - tqdm
+  - pip:
+    - codetiming
+    - sorcery>=0.2.2
