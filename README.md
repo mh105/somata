@@ -36,7 +36,7 @@ environment, all and only the required packages will be installed.
 
 ## Install 
 
-_Note: the PyPI namespace is under request. Follow the development only instructions below for now._
+_Note: the PyPI name is under request. Follow the development only instructions below for now._
 
 ```
 pip install somata
