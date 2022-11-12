@@ -1,0 +1,57 @@
+name: Push Tests on Linux
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build:
+    name: build-${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: ["ubuntu-latest"]
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Install Conda environment with Micromamba
+      uses: mamba-org/provision-with-micromamba@main
+      with:
+        cache-env: true
+        environment-file: environment.yml
+        environment-name: pot
+    
+    - name: Micromamba info
+      shell: bash -l {0}
+      run: |
+        micromamba info
+    
+    - name: Micromamba list
+      shell: bash -l {0}
+      run: |
+        micromamba list
+   
+    - name: Check python version
+      shell: bash -l {0}
+      run: |
+        python --version
+    
+    - name: Install somata
+      shell: bash -l {0}
+      run: |
+        pip install -e .
+   
+    - name: Lint with flake8
+      shell: bash -l {0}
+      run: |
+        micromamba install flake8
+        # stop the build if there are Python syntax errors or undefined names
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        
+    - name: Test with pytest
+      shell: bash -l {0}
+      run: |
+        pytest
