@@ -4,7 +4,6 @@ Author: Mingjian He <mh105@mit.edu>
 Dynamic programming (also known as belief propagation) algorithms for exact inference
 """
 
-import torch
 import numpy as np
 from scipy.linalg import solve_triangular
 
@@ -178,16 +177,6 @@ def logdet(A):
     for i in range(0, A.shape[0]-1):
         A = A[1:, 1:] - (A[1:, 0] @ A[0, 1:]) / A[0, 0]
         log_det += np.log(A[0, 0])
-    return log_det
-
-
-def logdet_torch(A):
-    """ Computes logdet using Schur complement """
-    log_det = torch.log(A[0, 0])
-    for i in range(0, A.shape[0]-1):
-        A = A[1:, 1:] - torch.matmul(torch.unsqueeze(A[1:, 0], -1),
-                                     torch.unsqueeze(A[0, 1:], 0))/A[0, 0]
-        log_det += torch.log(A[0, 0])
     return log_det
 
 
@@ -452,36 +441,6 @@ def inverse(A, approach='svd'):
         U, S, Vh = np.linalg.svd(A, full_matrices=True)
         S = _reciprocal_pos_vals(S)
         return (Vh.T * S) @ U.T
-
-    else:
-        raise ValueError('Specified matrix inversion approach is not recognized.')
-
-
-def inverse_torch(A, approach='svd'):
-    """
-    Custom inverse function for inverting large covariance matrices with Pytorch
-
-    see function header of inverse() for different approaches
-    """
-    if approach == 'gaussian':  # not recommended
-        return torch.linalg.inv(A)
-
-    elif approach == 'cholesky':  # if on CUDA will use CPU therefore slow
-        L = torch.linalg.cholesky(A, upper=False)
-        Ia = torch.eye(L.shape[0], dtype=L.dtype, device=L.device)
-        L_inv = torch.linalg.solve_triangular(L, Ia, upper=False)
-        return torch.matmul(L_inv.T, L_inv)
-
-    elif approach == 'qr':
-        Q, R = torch.linalg.qr(A, mode='complete')
-        Ir = torch.eye(R.shape[0], dtype=R.dtype, device=R.device)
-        R_inv = torch.linalg.solve_triangular(R, Ir, upper=True)
-        return torch.matmul(R_inv, Q.T)
-
-    elif approach == 'svd':  # if on CUDA will use GPU unless A is complex
-        U, S, Vh = torch.linalg.svd(A, full_matrices=True)
-        S = _reciprocal_pos_vals(S)
-        return torch.matmul(Vh.T * S, U.T)
 
     else:
         raise ValueError('Specified matrix inversion approach is not recognized.')

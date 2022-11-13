@@ -5,5 +5,5 @@ exact_inference module contains basic dynamic programming algorithms used in SOM
 """
 
 from .dp_func import forward_backward, baum_welch, viterbi, logdet, \
-    kalman, djkalman, inverse, inverse_torch
+    kalman, djkalman, inverse
 from .em import run_em

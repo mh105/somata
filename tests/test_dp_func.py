@@ -195,57 +195,10 @@ def test_inverse(dim=128):
     assert A.dtype == inverse(A, approach='svd').dtype, 'SVD inversion changed the dtype.'
 
 
-def test_inverse_torch(dim=128, atol=1e-3):
-    from somata.exact_inference import inverse_torch
-    import torch
-
-    # Test with a symmetric positive definite matrix
-    A = np.random.rand(dim, dim)
-    A = A @ A.T + np.eye(dim)
-    A_np_inv = np.linalg.inv(A)
-    A = torch.as_tensor(data=A, dtype=torch.float32)
-
-    assert np.allclose(A_np_inv.flatten(), inverse_torch(A, approach='gaussian').cpu().numpy().flatten(),
-                       atol=atol), 'Gaussian inversion is off.'
-    assert np.allclose(A_np_inv.flatten(), inverse_torch(A, approach='cholesky').cpu().numpy().flatten(),
-                       atol=atol), 'Cholesky inversion is off.'
-    assert np.allclose(A_np_inv.flatten(), inverse_torch(A, approach='qr').cpu().numpy().flatten(),
-                       atol=atol), 'QR inversion is off.'
-    assert np.allclose(A_np_inv.flatten(), inverse_torch(A, approach='svd').cpu().numpy().flatten(),
-                       atol=atol), 'SVD inversion is off.'
-
-    # Test with a diagonal matrix
-    A = np.eye(dim) * np.random.rand(dim)
-    A_np_inv = np.linalg.inv(A)
-    A = torch.as_tensor(data=A, dtype=torch.float32)
-
-    assert np.allclose(A_np_inv.flatten(), inverse_torch(A, approach='gaussian').cpu().numpy().flatten(),
-                       atol=atol), 'Gaussian inversion is off.'
-    assert np.allclose(A_np_inv.flatten(), inverse_torch(A, approach='cholesky').cpu().numpy().flatten(),
-                       atol=atol), 'Cholesky inversion is off.'
-    assert np.allclose(A_np_inv.flatten(), inverse_torch(A, approach='qr').cpu().numpy().flatten(),
-                       atol=atol), 'QR inversion is off.'
-    assert np.allclose(A_np_inv.flatten(), inverse_torch(A, approach='svd').cpu().numpy().flatten(),
-                       atol=atol), 'SVD inversion is off.'
-
-    # Test with a singular diagonal matrix
-    A = np.eye(dim) * np.random.rand(dim)
-    A_man_inv = 1.0 / np.diagonal(A)
-    A[-1, -1] = 0.0
-    A_man_inv[-1] = 0.0
-    A_man_inv = np.eye(dim) * A_man_inv
-    A = torch.as_tensor(data=A, dtype=torch.float32)
-
-    assert np.allclose(A_man_inv.flatten(), inverse_torch(A, approach='svd').cpu().numpy().flatten(),
-                       atol=atol), 'SVD inversion is off.'
-    assert A.dtype == inverse_torch(A, approach='svd').dtype, 'SVD inversion changed the dtype.'
-
-
 if __name__ == "__main__":
     test_forward_backward()
     test_viterbi()
     test_kalman()
     test_djkalman()
     test_inverse()
-    test_inverse_torch()
     print('DP function tests finished without exception.')
