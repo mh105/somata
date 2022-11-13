@@ -463,6 +463,22 @@ Look at the demo script [basic_models_demo_01102022.py](examples/basic_models_de
 1. ### Oscillator Model Learning <a name="osc"></a> [<img src="https://img.shields.io/badge/Status-Functional-success.svg?logo=Python">](#osc)
 --- 
 2. ### Iterative Oscillator Algorithm <a name="ioa"></a> [<img src="https://img.shields.io/badge/Status-Functional-success.svg?logo=Python">](#ioa)
+
+**N.B.:** We recommend downsampling to 120 Hz or less, depending on the oscillations present in your data. Highly oversampled data will make it more difficult to identify oscillatory components, increase the computational time, and could also introduce high frequency noise.
+
+One major goal of this method was to produce an algorithm that required minimal user intervention, if any. We recommend starting with the algorithm as is, but in the case of poor fitting, we suggest the following alterations:
+1. If the pole initialized from the one-step prediction is between two oscillations, causing poor fitting of this oscillation as it attempts to explain multiple oscillations, we recommend increasing the order of the AR model used to approximate the OSPE. Increase in increments of two, which will allow additional pairs of complex poles.
+
+2. Conversely to point 1, if the order of the AR model is too high then multiple pairs of roots will be attributed to the same oscillation, diluting the strength needed for each of them and possibly leading to none of them being selected as the strongest root in the iterative process to initialize the next oscillation, even though together they describe the strongest oscillation. This can be identified using the innovations plot with all of the AR roots plotted. In this case we recommend decreasing the AR order in increments of 2, to decrease the number of pairs of complex poles.
+
+3. If the initialization of the additional oscillations describes a single oscillation well, but the fitting of this oscillation attempts to explain multiple oscillations and causes poor fitting, we recommend increasing the concentration hyperparameter in the Von Mises prior. This will increase the weight on the initial frequency and stop the oscillation from shifting to explain other oscillations.
+
+4. If the model does not choose the correct number of oscillations, we recommend looking at all fitted models and selecting the best fitting model based on other selection criteria or using your best judgement. You can also choose a subset of well-fitted oscillations and run the kalman filter to estimate oscillations using those fitted parameters.
+
+5. Note that this algorithm assumes a stationary signal, and therefore stationary parameters. Although the Kalman filtering allows some flexibility in this requirement, enabling the model to work on some time-varying signal, the success of the method depends on the strength and duration of the signal components. The weaker and more brief the time-varying component is, the more poorly the model will capture it, if it does at all. We recommend decreasing the length of your window until you have a more stationary signal.
+
+This algorithm is designed to fit well automatically in most situations, but there will still be some data sets where it does not fit well without intervention.
+
 When using this module, please cite the following [paper](https://www.biorxiv.org/content/10.1101/2022.10.30.514422.abstract):
 
 Beck, A. M., He, M., Gutierrez, R. G., & Purdon, P. L. (2022). An iterative search algorithm to identify oscillatory dynamics in neurophysiological time series. bioRxiv.
