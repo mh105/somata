@@ -2,11 +2,11 @@
 
 Github: https://github.com/mh105/somata
 
-**State-space Oscillator Modeling And Time-series Analysis (SOMATA)** is a Python library for state-space neural signal 
-processing algorithms developed in the [Purdon Lab](https://purdonlab.mgh.harvard.edu). 
-Basic state-space models are introduced as class objects for flexible manipulations. 
-Classical exact and approximate inference algorithms are implemented and interfaced as class methods. 
-Advanced neural oscillator modeling techniques are brought together to work synergistically. 
+**State-space Oscillator Modeling And Time-series Analysis (SOMATA)** is a Python library for state-space neural signal
+processing algorithms developed in the [Purdon Lab](https://purdonlab.mgh.harvard.edu).
+Basic state-space models are introduced as class objects for flexible manipulations.
+Classical exact and approximate inference algorithms are implemented and interfaced as class methods.
+Advanced neural oscillator modeling techniques are brought together to work synergistically.
 
 [![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg)](https://github.com/mh105/pot/commits/master)
 [![made-with-python](https://img.shields.io/badge/Made%20with-Python-1f425f.svg)](https://www.python.org/)
@@ -15,7 +15,7 @@ Advanced neural oscillator modeling techniques are brought together to work syne
 
 ---
 
-## Table of Contents 
+## Table of Contents
 * [Requirements](#requirements)
 * [Install](#install)
 * [Basic state-space models](#basic-state-space-models)
@@ -30,15 +30,13 @@ Advanced neural oscillator modeling techniques are brought together to work syne
 
 ---
 
-## Requirements 
+## Requirements
 somata is built on `numpy` arrays for computations. `joblib` is used for multithreading. Additional dependencies include
 `matplotlib`, `scipy`, `tqdm`, `codetiming`, and `sorcery`. Full requirements for each release version will be updated
-under `install_requires` in the `setup.cfg` file. If the `environment.yml` file is used to create a new conda 
+under `install_requires` in the `setup.cfg` file. If the `environment.yml` file is used to create a new conda
 environment, all and only the required packages will be installed.
 
-## Install 
-
-_Note: the PyPI namespace is under request. Follow the development only instructions below for now._
+## Install
 
 ```
 pip install somata
@@ -54,7 +52,7 @@ pip install somata
 
 - ### Install conda
     [Recommended conda distribution: miniconda](https://docs.conda.io/en/latest/miniconda.html)
-    
+
     _Apple silicon Mac: choose conda native to the ARM64 architecture instead of Intel x86_
 
 - ### Create a new conda environment
@@ -74,22 +72,22 @@ pip install somata
 ---
 
 ## Basic state-space models
-Somata, much like a neuron body supported by dendrites, is built on a set of basic state-space models introduced as class objects. 
+Somata, much like a neuron body supported by dendrites, is built on a set of basic state-space models introduced as class objects.
 
 The motivations are to:
 - develop a standardized format to store model parameters of state-space equations
-- override Python dunder methods so `__repr__` and `__str__` return something useful 
-- define arithmetic-like operations such as `A + B` and `A * B` 
+- override Python dunder methods so `__repr__` and `__str__` return something useful
+- define arithmetic-like operations such as `A + B` and `A * B`
 - emulate `numpy.array()` operations including `.append()`
-- implement inference algorithms like Kalman filtering and parameter update (m-step) equations as callable class methods 
+- implement inference algorithms like Kalman filtering and parameter update (m-step) equations as callable class methods
 
-At present, and in the near future, somata will be focused on **time-invariant Gaussian linear dynamical systems**. 
-This limit on models we consider simplifies basic models to avoid embedded classes such as `transition_model` and 
+At present, and in the near future, somata will be focused on **time-invariant Gaussian linear dynamical systems**.
+This limit on models we consider simplifies basic models to avoid embedded classes such as `transition_model` and
 `observation_model`, at the cost of restricting somata to classical algorithms with only some extensions to
-Bayesian inference and learning. This is a deliberate choice to allow easier, faster, and cleaner applications of 
-somata on neural data analysis, instead of to provide a full-fledged statistical inference package. 
+Bayesian inference and learning. This is a deliberate choice to allow easier, faster, and cleaner applications of
+somata on neural data analysis, instead of to provide a full-fledged statistical inference package.
 
---- 
+---
 
 ### _class_ StateSpaceModel
 ```python
@@ -109,21 +107,21 @@ $$
 \mathbf{x}_0 \sim \mathcal{N}(\mathbf{\mu}_0, \mathbf{Q}_0)
 $$
 
-Most of the constructor input arguments correspond to these model parameters, which are stored as instance attributes. 
-There are two additional arguments: `Fs` and `components`. 
+Most of the constructor input arguments correspond to these model parameters, which are stored as instance attributes.
+There are two additional arguments: `Fs` and `components`.
 
 `Fs` is the sampling frequency of observed data `y`.
 
-`components` is a list of independent components underlying the hidden states $\mathbf{x}$. The independent components are 
+`components` is a list of independent components underlying the hidden states $\mathbf{x}$. The independent components are
 assumed to appear in block-diagonal form in the state equation. For example, $\mathbf{x}_t$ might have two independent autoregressive
-models (AR) of order 1, and the observation matrix is simply $[1, 1]$ that sums these two components. In this case, `components` 
+models (AR) of order 1, and the observation matrix is simply $[1, 1]$ that sums these two components. In this case, `components`
 would be a list of two AR1 models. Note that each element of the `components` list should be an instance of one of basic model
-class objects. To break the recursion, often the `components` attribute of a component is set to `None`, i.e., 
-`components[0].components = None`. 
+class objects. To break the recursion, often the `components` attribute of a component is set to `None`, i.e.,
+`components[0].components = None`.
 
 1. `StateSpaceModel.__repr__()`
 
-The double-under method `__repr__()` is overwritten to provide some unique identification info: 
+The double-under method `__repr__()` is overwritten to provide some unique identification info:
 
 ```python
 >>> s1 = StateSpaceModel()
@@ -150,9 +148,9 @@ The double-under method `__str__()` is overwritten so `print()` returns useful i
 
 3. Model _stacking_ in `StateSpaceModel`
 
-In many applications, there are several possible parameter values for a given state-space model structure. Instead of duplicating 
-the same values in multiple instances, somata uses _stacking_ to store multiple model values in the same object instance. Stackable 
-model parameters are `F, Q, mu0, Q0, G, R`. For example: 
+In many applications, there are several possible parameter values for a given state-space model structure. Instead of duplicating
+the same values in multiple instances, somata uses _stacking_ to store multiple model values in the same object instance. Stackable
+model parameters are `F, Q, mu0, Q0, G, R`. For example:
 
 ```python
 >>> s1 = StateSpaceModel(F=1, Q=2)
@@ -167,7 +165,7 @@ model parameters are `F, Q, mu0, Q0, G, R`. For example:
  mu0.shape = None       Q0 .shape = None
  G  .shape = None       R  .shape = None
  y  .shape = None       Fs = None
- 
+
 >>> print(s2)
 <Ssm object at 0x102acc130>
  nstate   = 1     ncomp    = 0
@@ -178,7 +176,7 @@ model parameters are `F, Q, mu0, Q0, G, R`. For example:
  mu0.shape = None       Q0 .shape = None
  G  .shape = None       R  .shape = None
  y  .shape = None       Fs = None
- 
+
 >>> s3 = s1+s2
 >>> print(s3)
 <Ssm object at 0x102acc280>
@@ -191,7 +189,7 @@ model parameters are `F, Q, mu0, Q0, G, R`. For example:
  G  .shape = None       R  .shape = None
  y  .shape = None       Fs = None
 ```
-Invoking the arithmetic operator `+` stacks the two instances `s1` and `s2` into a new instance, where the third dimension of the 
+Invoking the arithmetic operator `+` stacks the two instances `s1` and `s2` into a new instance, where the third dimension of the
 `F` attribute is now `2`, with the two values from `s1` and `s2`. The `nmodel` attribute is also updated to `2`.
 ```python
 >>> s3.F
@@ -219,7 +217,7 @@ parameters each with several possible values. For example:
  mu0.shape = None       Q0 .shape = None
  G  .shape = None       R  .shape = (1, 1)
  y  .shape = None       Fs = None
- 
+
 >>> s3 = s1*s2
 >>> print(s3)
 <Ssm object at 0x1059626b0>
@@ -231,7 +229,7 @@ parameters each with several possible values. For example:
  mu0.shape = None       Q0 .shape = None
  G  .shape = None       R  .shape = (1, 1)
  y  .shape = None       Fs = None
- 
+
 >>> s3.F
 array([[[1., 1., 2., 2.]]])
 >>> s3.Q
@@ -265,9 +263,9 @@ Invoking `len()` returns the number of stacked models:
 
 7. `StateSpaceModel.append()`
 
-Another useful class method on `StateSpaceModel` is `.append()`. As one would expect, appending a model to another results in 
-combining them in block-diagonal form in the state equation. Compatibility checks happen in the background to make sure no conflict 
-exists on the respective observation equations and observed data, if any. 
+Another useful class method on `StateSpaceModel` is `.append()`. As one would expect, appending a model to another results in
+combining them in block-diagonal form in the state equation. Compatibility checks happen in the background to make sure no conflict
+exists on the respective observation equations and observed data, if any.
 
 ```python
 >>> s1 = StateSpaceModel(F=1, Q=3, R=5)
@@ -283,7 +281,7 @@ exists on the respective observation equations and observed data, if any.
  mu0.shape = None       Q0 .shape = None
  G  .shape = None       R  .shape = (1, 1)
  y  .shape = None       Fs = None
- 
+
 >>> s1.F
 array([[1., 0.],
        [0., 2.]])
@@ -311,7 +309,7 @@ With an array of `StateSpaceModel`, one can easily run Kalman filtering and smoo
 ```
 
 M-step updates are organized using `m_estimate()` that will recurse into each element of the `components` list and use
-the appropriate m-step update methods associated with different types of state-space models. 
+the appropriate m-step update methods associated with different types of state-space models.
 
 **Below we explain three kinds of basic state-space models currently supported in somata.**
 
@@ -362,9 +360,9 @@ Osc(1)<81f0>
  dc index  = None
 ```
 
-Notice the `components` attribute auto-populates with a spaceholder `OscillatorModel` instance, which is different from the `o1` instance 
+Notice the `components` attribute auto-populates with a spaceholder `OscillatorModel` instance, which is different from the `o1` instance
 as can be recognized by different memory addresses. State noise variance $\sigma^2$ defaults to $3$ when not specified and can be changed
-with the `sigma2` argument to the constructor method. 
+with the `sigma2` argument to the constructor method.
 
 ### _class_ AutoRegModel(StateSpaceModel)
 ```python
@@ -417,7 +415,7 @@ Note that `__repr__()` is slightly different for `AutoRegModel`, since the key i
 ```python
 somata.GeneralSSModel(components='Gen', F=None, Q=None, mu0=None, Q0=None, G=None, R=None, y=None, Fs=None)
 ```
-`GeneralSSModel` is a child class of `StateSpaceModel`, which means it inherits all the class methods explained above. The same general Gaussian linear dynamic system as before is followed: 
+`GeneralSSModel` is a child class of `StateSpaceModel`, which means it inherits all the class methods explained above. The same general Gaussian linear dynamic system as before is followed:
 
 $$
 \mathbf{x}_ t = \mathbf{F}\mathbf{x}_{t-1} + \boldsymbol{\eta}_t, \boldsymbol{\eta}_t \sim \mathcal{N}(\mathbf{0}, \mathbf{Q})
@@ -431,7 +429,7 @@ $$
 \mathbf{x}_0 \sim \mathcal{N}(\mathbf{\mu}_0, \mathbf{Q}_0)
 $$
 
-`GeneralSSModel` is added to somata so that one can perform the most general Gaussian updates for a state-space model without special structures as specified in `OscillatorModel` and `AutoRegModel`. In other words, with non-sparse structures in the model parameters 
+`GeneralSSModel` is added to somata so that one can perform the most general Gaussian updates for a state-space model without special structures as specified in `OscillatorModel` and `AutoRegModel`. In other words, with non-sparse structures in the model parameters
 `F, Q, Q0, G, R`. To create a simple general state-space model:
 
 ```python
@@ -455,13 +453,13 @@ Look at the demo script [basic_models_demo_01102022.py](examples/basic_models_de
 
 ---
 
-## Advanced neural oscillator methods 
+## Advanced neural oscillator methods
 1. [Oscillator Model Learning](#osc)
 2. [Iterative Oscillator Algorithm](#ioa)
 
---- 
+---
 1. ### Oscillator Model Learning <a name="osc"></a> [<img src="https://img.shields.io/badge/Status-Functional-success.svg?logo=Python">](#osc)
---- 
+---
 2. ### Iterative Oscillator Algorithm <a name="ioa"></a> [<img src="https://img.shields.io/badge/Status-Functional-success.svg?logo=Python">](#ioa)
 
 **N.B.:** We recommend downsampling to 120 Hz or less, depending on the oscillations present in your data. Highly oversampled data will make it more difficult to identify oscillatory components, increase the computational time, and could also introduce high frequency noise.
@@ -485,12 +483,12 @@ Beck, A. M., He, M., Gutierrez, R. G., & Purdon, P. L. (2022). An iterative sear
 
 ---
 
-## Authors 
+## Authors
 Mingjian He, Proloy Das, Amanda Beck, Patrick Purdon
 
 ## Citation
 Use different citation styles at: https://doi.org/10.5281/zenodo.7242130
 
-## License 
+## License
 SOMATA is licensed under the [BSD 3-Clause Clear license](https://spdx.org/licenses/BSD-3-Clause-Clear.html). \
 Copyright © 2022. All rights reserved.
