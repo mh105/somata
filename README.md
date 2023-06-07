@@ -40,13 +40,23 @@ If the [`environment.yml`](environment.yml) file is used to [create a new conda 
 all and only the required packages will be installed.
 
 ## Install
+```
+$ pip install somata
+```
 
+### conda-forge channel
+While [`pip install`](https://pip.pypa.io/en/stable/cli/pip_install/) usually works, [an alternative way](https://pythonspeed.com/articles/conda-vs-pip/) to install `somata` is through the [conda-forge](https://conda-forge.org/docs/index.html) [channel](https://docs.conda.io/projects/conda/en/latest/user-guide/concepts/channels.html#what-is-a-conda-channel), which utilizes [continuous integration (CI)](https://conda-forge.org/docs/user/ci-skeleton.html) [across OS platforms](https://conda-forge.org/docs/user/introduction.html#why-conda-forge).
+This means [conda-forge packages](https://conda-forge.org/feedstock-outputs/index.html) are more [compatible with each other](https://conda-forge.org/docs/maintainer/adding_pkgs.html#avoid-external-dependencies) compared to [Python Package Index (PyPI) packages](https://pypi.org) installed by [`pip` by default](https://packaging.python.org/en/latest/tutorials/installing-packages/#installing-from-pypi).
+When `somata` is installed into an [existing conda environment](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#viewing-a-list-of-your-environments), unmet dependencies are automatically searched, downloaded, and installed from the same repository of packages containing `somata`. 
+If `pip install somata` fails to resolve some dependencies, the [conda-forge feedstock](https://github.com/conda-forge/conda-feedstock#terminology) can be used instead:
 ```
-pip install somata
+$ conda install somata -c conda-forge
 ```
-_If the [`pytorch`](https://pytorch.org) dependency is not resolved successfully by [`pip`](https://pip.pypa.io/en/stable/) for your [OS](https://whatsmyos.com), 
+
+### torch requirement
+If the [`pytorch`](https://pytorch.org) dependency is not resolved correctly for your [OS](https://whatsmyos.com), 
 first [install `pytorch` manually](https://pytorch.org/get-started/locally/) in a [conda environment](https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html) that you wish to install [`somata`](https://pypi.org/project/somata/), 
-and then [execute the above line](https://packaging.python.org/en/latest/tutorials/installing-packages/#ensure-you-can-run-pip-from-the-command-line) to install [`somata`](https://pypi.org/project/somata/)._
+and then rerun either of the above two lines to install `somata`.
 
 ### (For development only)
 
@@ -62,16 +72,16 @@ and then [execute the above line](https://packaging.python.org/en/latest/tutoria
     _[Apple silicon Mac](https://support.apple.com/en-us/HT211814): choose conda native to the [ARM64 architecture](https://www.anaconda.com/blog/new-release-anaconda-distribution-now-supporting-m1) instead of [Intel x86](https://en.wikipedia.org/wiki/X86)._
 
 - ### Create a new conda environment
-    ``` conda install mamba -n base -c conda-forge ```\
-    ``` cd <repo root directory with environment.yml> ```\
-    ``` mamba env create -f environment.yml ```\
-    ``` conda activate somata ```
+    ``` $ conda install mamba -n base -c conda-forge ```\
+    ``` $ cd <repo root directory with environment.yml> ```\
+    ``` $ mamba env create -f environment.yml ```\
+    ``` $ conda activate somata ```
 
-    _You may also install `somata` in an [existing environment](https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#using-pip-in-an-environment) by skipping this step._
+    _You may also [install `somata` in an existing environment](https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#using-pip-in-an-environment) by skipping this step._
 
 - ### Install somata as a package in development mode
-    ``` cd <repo root directory with setup.py> ```\
-    ``` pip install -e . ```
+    ``` $ cd <repo root directory with setup.py> ```\
+    ``` $ pip install -e . ```
 
     _[What is: Editable Installs](https://setuptools.pypa.io/en/latest/userguide/development_mode.html)_
 

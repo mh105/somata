@@ -357,34 +357,6 @@ class OscillatorModel(Ssm):
         return frequency_rad * sampling_frequency / (2 * np.pi)
 
     # Visualization methods - Author: Amanda Beck <ambeck@mit.edu>
-    def whiten(self, filter_type='sos'):
-        """
-        Adapted from Purdon and Weisskoff, Human Brain Mapping (1998), fit dc component and then
-        whiten by inverting a fitted AR1 (the dc component)
-        """
-        # Make sure the dc component is fitted. This is why we allow only one component
-        assert self.dc_idx is not None, 'DC Component is necessary for whitening. dc_idx is None.'
-        assert self.ncomp == 1, 'More than one component. Only whiten with a single dc component.'
-
-        # Calculate the whitening filter
-        # noinspection PyProtectedMember
-        from .._preprocessing._colored_noise_utils import _spectral_factorization, _setup_filters
-        sos1, sos2, (D, gamma, K) = _spectral_factorization(self.R, self.sigma2, self.a)
-        # noinspection PyAttributeOutsideInit
-        self.D, self.gamma, self.K = D, gamma, K  # TODO: revisit to package them not as attributes?
-
-        # Apply whitening filter with LCCDE
-        # TODO: maybe use scipy filters?
-        if filter_type == 'LCCDE':
-            self.y_whiten = np.concatenate((self.y[0], np.zeros(self.y.size - 1)))
-            for ii in range(self.y.size - 1):
-                self.y_whiten[0, ii + 1] = np.sqrt(self.K) * (self.y[0, ii + 1] - self.gamma * self.y[0, ii]) + \
-                                           self.a * self.y_whiten[0, ii]
-        if filter_type == 'sos':
-            whitener, colorer = _setup_filters(sos1, sos2)
-            # noinspection PyAttributeOutsideInit
-            self.y_whiten = whitener(self.y)
-
     def visualize_freq(self, version, bw=1, y=None, sim_osc=None, sim_x=None, xlim=None, ylim=None, ax=None):
         """ Visualize the frequency spectrum of real data or the theoretical PSD of the oscillation components """
         import matplotlib.pyplot as plt
