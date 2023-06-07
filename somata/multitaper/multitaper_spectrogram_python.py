@@ -8,21 +8,21 @@ import warnings
 import timeit
 from joblib import Parallel, delayed, cpu_count
 # Visualization imports
+import colorcet  # this import is necessary to add rainbow colormap to matplotlib
 import matplotlib.pyplot as plt
-import librosa.display
 
 
 # MULTITAPER SPECTROGRAM #
 def multitaper_spectrogram(data, fs, frequency_range=None, time_bandwidth=5, num_tapers=None, window_params=None,
-                           min_nfft=0, detrend_opt='linear', multiprocess=True, n_jobs=None, weighting='unity',
-                           plot_on=False, clim_scale=True, verbose=False, xyflip=False):
+                           min_nfft=0, detrend_opt='linear', multiprocess=False, n_jobs=None, weighting='unity',
+                           plot_on=True, return_fig=False, clim_scale=True, verbose=True, xyflip=False):
     """ Compute multitaper spectrogram of timeseries data
     Usage:
     mt_spectrogram, stimes, sfreqs = multitaper_spectrogram(data, fs, frequency_range=None, time_bandwidth=5,
-                                                                   num_tapers=None, window_params=None, min_nfft=0,
-                                                                   detrend_opt='linear', multiprocess=False, cpus=False,
-                                                                    weighting='unity', plot_on=True, verbose=True,
-                                                                    xyflip=False):
+                                                            num_tapers=None, window_params=None, min_nfft=0,
+                                                            detrend_opt='linear', multiprocess=False, cpus=False,
+                                                            weighting='unity', plot_on=True, return_fig=False,
+                                                            clim_scale=True, verbose=True, xyflip=False):
         Arguments:
                 data (1d np.array): time series data -- required
                 fs (float): sampling frequency in Hz  -- required
@@ -42,9 +42,10 @@ def multitaper_spectrogram(data, fs, frequency_range=None, time_bandwidth=5, num
                             all available - 1.
                 weighting (str): weighting of tapers ('unity' (default), 'eigen', 'adapt');
                 plot_on (bool): plot results (default: True)
-                clim_scale (bool): automatically scale the colormap on the plotted spectrogram (default: true)
-                verbose (bool): display spectrogram properties (default: true)
-                xyflip (bool): transpose the mt_spectrogram output (default: false)
+                return_fig (bool): return plotted spectrogram (default: False)
+                clim_scale (bool): automatically scale the colormap on the plotted spectrogram (default: True)
+                verbose (bool): display spectrogram properties (default: True)
+                xyflip (bool): transpose the mt_spectrogram output (default: False)
         Returns:
                 mt_spectrogram (TxF np array): spectral power matrix
                 stimes (1xT np array): timepoints (s) in mt_spectrogram
@@ -66,9 +67,11 @@ def multitaper_spectrogram(data, fs, frequency_range=None, time_bandwidth=5, num
             cpus = 3  # use 3 cores in multiprocessing
             weighting = 'unity'  # weight each taper at 1
             plot_on = True  # plot spectrogram
+            return_fig = False  # do not return plotted spectrogram
             clim_scale = False # don't auto-scale the colormap
             verbose = True  # print extra info
             xyflip = False  # do not transpose spect output matrix
+
             # Generate sample chirp data
             t = np.arange(1/fs, 600, 1/fs)  # Create 10 min time array from 1/fs to 600 stepping by 1/fs
             f_start = 1  # Set chirp freq range min (Hz)
@@ -77,7 +80,8 @@ def multitaper_spectrogram(data, fs, frequency_range=None, time_bandwidth=5, num
             # Compute the multitaper spectrogram
             spect, stimes, sfreqs = multitaper_spectrogram(data, fs, frequency_range, time_bandwidth, num_tapers,
                                                            window_params, min_nfft, detrend_opt, multiprocess,
-                                                           cpus, weighting, plot_on, verbose, xyflip):
+                                                           cpus, weighting, plot_on, return_fig, clim_scale,
+                                                           verbose, xyflip):
 
         This code is companion to the paper:
         "Sleep Neurophysiological Dynamics Through the Lens of Multitaper Spectral Analysis"
@@ -86,7 +90,7 @@ def multitaper_spectrogram(data, fs, frequency_range=None, time_bandwidth=5, num
            DOI: 10.1152/physiol.00062.2015
          which should be cited for academic use of this code.
 
-         A full tutorial on the multitaper spectrogram can be found at:  #   https://www.sleepEEG.org/multitaper
+         A full tutorial on the multitaper spectrogram can be found at: # https://www.sleepEEG.org/multitaper
 
         Copyright 2021 Michael J. Prerau Laboratory. - https://www.sleepEEG.org
         Authors: Michael J. Prerau, Ph.D., Thomas Possidente, Mingjian He
@@ -107,7 +111,7 @@ def multitaper_spectrogram(data, fs, frequency_range=None, time_bandwidth=5, num
     # Display spectrogram parameters
     if verbose:
         display_spectrogram_props(fs, time_bandwidth, num_tapers, [winsize_samples, winstep_samples], frequency_range,
-                                  detrend_opt)
+                                  nfft, detrend_opt)
 
     # Split data into segments and preallocate
     data_segments = data[window_idxs]
@@ -162,25 +166,36 @@ def multitaper_spectrogram(data, fs, frequency_range=None, time_bandwidth=5, num
     if verbose:
         print("\n Multitaper compute time: " + "%.2f" % (toc - tic) + " seconds")
 
-    # Plot multitaper spectrogram
-    if plot_on:
-
-        # Eliminate bad data from colormap scaling
-        spect_data = mt_spectrogram
-        clim = np.percentile(spect_data, [5, 95])  # Scale colormap from 5th percentile to 95th
-
-        plt.figure(1, figsize=(10, 5))
-        librosa.display.specshow(nanpow2db(mt_spectrogram), x_axis='time', y_axis='linear',
-                                 x_coords=stimes, y_coords=sfreqs, shading='auto', cmap="jet")
-        plt.colorbar(label='Power (dB)')
-        plt.xlabel("Time (HH:MM:SS)")
-        plt.ylabel("Frequency (Hz)")
-        if clim_scale:
-            plt.clim(clim)  # actually change colorbar scale
-        plt.show()
-
     if all(mt_spectrogram.flatten() == 0):
         print("\n Data was all zeros, no output")
+
+    # Plot multitaper spectrogram
+    if plot_on:
+        # convert from power to dB
+        spect_data = nanpow2db(mt_spectrogram)
+
+        # Set x and y axes
+        dx = stimes[1] - stimes[0]
+        dy = sfreqs[1] - sfreqs[0]
+        extent = [stimes[0]-dx, stimes[-1]+dx, sfreqs[-1]+dy, sfreqs[0]-dy]
+
+        # Plot spectrogram
+        fig, ax = plt.subplots()
+        im = ax.imshow(spect_data, extent=extent, aspect='auto')
+        fig.colorbar(im, ax=ax, label='PSD (dB)', shrink=0.8)
+        ax.set_xlabel("Time (HH:MM:SS)")
+        ax.set_ylabel("Frequency (Hz)")
+        im.set_cmap(plt.cm.get_cmap('cet_rainbow4'))
+        ax.invert_yaxis()
+
+        # Scale colormap
+        if clim_scale:
+            clim = np.percentile(spect_data, [5, 98])  # from 5th percentile to 98th
+            im.set_clim(clim)  # actually change colorbar scale
+
+        fig.show()
+        if return_fig:
+            return mt_spectrogram, stimes, sfreqs, (fig, ax)
 
     return mt_spectrogram, stimes, sfreqs
 
@@ -344,7 +359,7 @@ def process_spectrogram_params(fs, nfft, frequency_range, window_start, datawin_
 
 
 # DISPLAY SPECTROGRAM PROPERTIES
-def display_spectrogram_props(fs, time_bandwidth, num_tapers, data_window_params, frequency_range, detrend_opt):
+def display_spectrogram_props(fs, time_bandwidth, num_tapers, data_window_params, frequency_range, nfft, detrend_opt):
     """ Prints spectrogram properties
         Arguments:
             fs (float): sampling frequency in Hz  -- required
@@ -352,7 +367,8 @@ def display_spectrogram_props(fs, time_bandwidth, num_tapers, data_window_params
             num_tapers (int): number of DPSS tapers to use -- required
             data_window_params (list): 1x2 list - [window length(s), window step size(s)] -- required
             frequency_range (list): 1x2 list - [<min frequency>, <max frequency>] -- required
-            detrend_opt (str): detrend data window ('linear' (default), 'constant', 'off')
+            nfft(float): number of fast fourier transform samples -- required
+            detrend_opt (str): detrend data window ('linear' (default), 'constant', 'off') -- required
         Returns:
             This function does not return anything
     """
@@ -367,6 +383,7 @@ def display_spectrogram_props(fs, time_bandwidth, num_tapers, data_window_params
     print('     Time Half-Bandwidth Product: ' + str(time_bandwidth))
     print('     Number of Tapers: ' + str(num_tapers))
     print('     Frequency Range: ' + str(frequency_range[0]) + "-" + str(frequency_range[1]) + 'Hz')
+    print('     NFFT: ' + str(nfft))
     print('     Detrend: ' + detrend_opt + '\n')
 
 
@@ -427,6 +444,11 @@ def calc_mts_segment(data_segment, dpss_tapers, nfft, freq_inds, detrend_opt, nu
         ret.fill(0)
         return ret
 
+    if any(np.isnan(data_segment)):
+        ret = np.empty(sum(freq_inds))
+        ret.fill(np.nan)
+        return ret
+
     # Option to detrend data to remove low frequency DC component
     if detrend_opt != 'off':
         data_segment = detrend(data_segment, type=detrend_opt)
@@ -462,14 +484,3 @@ def calc_mts_segment(data_segment, dpss_tapers, nfft, freq_inds, detrend_opt, nu
         mt_spectrum = np.reshape(mt_spectrum, nfft)  # reshape to 1D
 
     return mt_spectrum[freq_inds]
-
-
-def fast_psd_multitaper(x, sfreq, freq_min, freq_max, bandwidth):
-    """ Fast multitaper PSD estimate with windowing """
-    window_length = min(x.size / sfreq, 10)  # max to 10s windows
-    time_bandwidth = bandwidth / 2 * window_length
-    spect, _, freq = multitaper_spectrogram(data=x, fs=sfreq, frequency_range=[freq_min, freq_max],
-                                            time_bandwidth=time_bandwidth,
-                                            window_params=[window_length, 1], detrend_opt='linear')
-    psd = np.mean(spect, 1) * sfreq  # scale back the normalization by sampling frequency
-    return psd, freq

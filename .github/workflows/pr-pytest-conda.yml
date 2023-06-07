@@ -20,7 +20,7 @@ jobs:
       with:
         cache-env: true
         environment-file: environment.yml
-        environment-name: pot
+        environment-name: somata
         
     - name: Micromamba info
       shell: bash -l {0}

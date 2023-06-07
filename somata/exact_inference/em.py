@@ -6,7 +6,6 @@ em module contains a general run_em() function that works across SOMATA
 
 import numpy as np
 from tqdm import tqdm
-from sorcery import dict_of
 
 
 def run_em(obj: object, y=None, init_from_data=False, e_kwargs=None, m_kwargs=None,
@@ -36,6 +35,9 @@ def run_em(obj: object, y=None, init_from_data=False, e_kwargs=None, m_kwargs=No
     :param return_dict: None -> no return, True -> return dict, False -> return tuple of variables
     :param show_pbar: show progress bar during EM iterations
     """
+    e_kwargs = {} if e_kwargs is None else e_kwargs
+    m_kwargs = {} if m_kwargs is None else m_kwargs
+
     # Initialize from data
     if init_from_data:
         obj.initialize_from_data(y=y)
@@ -72,6 +74,6 @@ def run_em(obj: object, y=None, init_from_data=False, e_kwargs=None, m_kwargs=No
     if return_dict is None:
         pass
     elif return_dict:
-        return dict_of(em_iter, stop_var_tally)
+        return {'em_iter': em_iter, 'stop_var_tally': stop_var_tally}
     else:
         return em_iter, stop_var_tally

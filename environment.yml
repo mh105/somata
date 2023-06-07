@@ -4,19 +4,17 @@ name: somata
 channels:
   - conda-forge
 dependencies:
+  - numpy==1.23
+  - python>=3.8
+  - codetiming
+  - colorcet
   - ipdb
   - joblib
   - kneed
-  - librosa
   - matplotlib
-  - numpy>=1.22
   - pip
   - pytest
-  - python>=3.8
   - scipy
   - setuptools
+  - spectrum
   - tqdm
-  - pip:
-    - spectrum
-    - codetiming
-    - sorcery>=0.2.2

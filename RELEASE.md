@@ -1,5 +1,18 @@
 # Release log
 
+## 0.3.1
+*June 2023*
+
+#### New features
+
+- Update iterative oscillator algorithm to use new routines
+- Introduce switching module for switching state-space models
+
+#### Closed issues
+
+- Fix an issue of iOsc only adding AR1 component to slow oscillation
+- Fix plotting issues of the multitaper module
+
 ## 0.2.1
 *November 2022*
 

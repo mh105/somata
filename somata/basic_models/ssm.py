@@ -10,7 +10,6 @@ import numbers
 from collections.abc import Iterable
 from copy import deepcopy
 from joblib import Parallel, delayed, cpu_count
-from sorcery import dict_of
 from scipy.linalg import block_diag
 
 
@@ -643,6 +642,7 @@ class StateSpaceModel(object):
 
             # Provide an empty component in the components attribute
             setattr(current_component, 'components', [deepcopy(empty_comp)])
+            current_component.components[0].default_G = current_component.default_G
 
             if getattr(self, 'F') is not None:
                 if deep_copy:
@@ -747,7 +747,7 @@ class StateSpaceModel(object):
             return a
 
     @staticmethod
-    def setup_array(ssm_array, y=None):
+    def setup_array(ssm_array, y=None, skip_check_observed=False):
         """ Prepare an array of Ssm objects for other signal processing methods """
         # Convert to an array if the input is a single Ssm instance
         if hasattr(ssm_array, 'nmodel'):  # suggests that this is a single somata class object
@@ -760,12 +760,17 @@ class StateSpaceModel(object):
 
         # Verify that observed data are identical across the array
         first_ssm: StateSpaceModel = ssm_array[0]
-        for ii in range(1, len(ssm_array)):
-            first_ssm._check_observed_data(ssm_array[ii])
+        if not skip_check_observed:
+            for ii in range(1, len(ssm_array)):
+                first_ssm._check_observed_data(ssm_array[ii])
 
         # Array dimensions
         K = len(ssm_array)  # number of models
-        T = first_ssm.ntime  # number of time points
+        Ts = [x.ntime for x in ssm_array]  # number of time points
+        if len(np.unique(Ts)) == 1:
+            T = Ts[0]
+        else:
+            T = Ts  # allow variable lengths of data in different objects
 
         return ssm_array, K, T
 
@@ -785,10 +790,12 @@ class StateSpaceModel(object):
             np.seterr(**old_settings)
 
         if EM:  # return minimally necessary variables for EM algorithm
-            return dict_of(x_t_n, P_t_n, P_t_tmin1_n, logL)
+            return {'x_t_n': x_t_n, 'P_t_n': P_t_n, 'P_t_tmin1_n': P_t_tmin1_n, 'logL': logL}
         else:
             if return_dict:
-                return dict_of(x_t_n, P_t_n, P_t_tmin1_n, logL, x_t_t, P_t_t, K_t, x_t_tmin1, P_t_tmin1, fy_t_interp)
+                return {'x_t_n': x_t_n, 'P_t_n': P_t_n, 'P_t_tmin1_n': P_t_tmin1_n, 'logL': logL,
+                        'x_t_t': x_t_t, 'P_t_t': P_t_t, 'K_t': K_t,
+                        'x_t_tmin1': x_t_tmin1, 'P_t_tmin1': P_t_tmin1, 'fy_t_interp': fy_t_interp}
             else:
                 return x_t_n, P_t_n, P_t_tmin1_n, logL, x_t_t, P_t_t, K_t, x_t_tmin1, P_t_tmin1, fy_t_interp
 
@@ -807,20 +814,23 @@ class StateSpaceModel(object):
             np.seterr(**old_settings)
 
         if EM:  # return minimally necessary variables for EM algorithm
-            return dict_of(x_t_n, P_t_n, P_t_tmin1_n, logL)
+            return {'x_t_n': x_t_n, 'P_t_n': P_t_n, 'P_t_tmin1_n': P_t_tmin1_n, 'logL': logL}
         else:
             if return_dict:
-                return dict_of(x_t_n, P_t_n, P_t_tmin1_n, logL, x_t_t, P_t_t, K_t, x_t_tmin1, P_t_tmin1, fy_t_interp)
+                return {'x_t_n': x_t_n, 'P_t_n': P_t_n, 'P_t_tmin1_n': P_t_tmin1_n, 'logL': logL,
+                        'x_t_t': x_t_t, 'P_t_t': P_t_t, 'K_t': K_t,
+                        'x_t_tmin1': x_t_tmin1, 'P_t_tmin1': P_t_tmin1, 'fy_t_interp': fy_t_interp}
             else:
                 return x_t_n, P_t_n, P_t_tmin1_n, logL, x_t_t, P_t_t, K_t, x_t_tmin1, P_t_tmin1, fy_t_interp
 
     @staticmethod
-    def par_kalman(ssm_array, y=None, method='kalman', R_weights=None, skip_interp=True, return_dict=False):
+    def par_kalman(ssm_array, y=None, method='kalman', skip_check_observed=False,
+                   R_weights=None, skip_interp=True, return_dict=False):
         """
         Parallel run kalman filtering and smoothing on
         an array of StateSpaceModel objects
         """
-        ssm_array, K, T = StateSpaceModel.setup_array(ssm_array, y=y)
+        ssm_array, K, _ = StateSpaceModel.setup_array(ssm_array, y=y, skip_check_observed=skip_check_observed)
 
         if method == 'kalman':
             kalman_func = getattr(StateSpaceModel, 'kalman_filt_smooth')
@@ -842,17 +852,17 @@ class StateSpaceModel(object):
 
         # Unpack results into separate variables to return
         (x_t_n_all, P_t_n_all, P_t_tmin1_n_all,
-         x_t_t_all, P_t_t_all, K_t_all, x_t_tmin1_all, P_t_tmin1_all) = tuple([[None]*K for _ in range(8)])
-        logL_all = np.zeros((K, T), dtype=np.float64)
-        fy_t_interp_all = np.zeros((K, T), dtype=np.float64)
+         x_t_t_all, P_t_t_all, K_t_all, x_t_tmin1_all, P_t_tmin1_all,
+         logL_all, fy_t_interp_all) = tuple([[None]*K for _ in range(10)])
         for m in range(K):
             (x_t_n_all[m], P_t_n_all[m], P_t_tmin1_n_all[m],
-             logL_all[m, :], x_t_t_all[m], P_t_t_all[m], K_t_all[m],
-             x_t_tmin1_all[m], P_t_tmin1_all[m], fy_t_interp_all[m, :]) = results[m]
+             logL_all[m], x_t_t_all[m], P_t_t_all[m], K_t_all[m],
+             x_t_tmin1_all[m], P_t_tmin1_all[m], fy_t_interp_all[m]) = results[m]
 
         if return_dict:
-            return dict_of(x_t_n_all, P_t_n_all, P_t_tmin1_n_all, logL_all,
-                           x_t_t_all, P_t_t_all, K_t_all, x_t_tmin1_all, P_t_tmin1_all, fy_t_interp_all)
+            return {'x_t_n_all': x_t_n_all, 'P_t_n_all': P_t_n_all, 'P_t_tmin1_n_all': P_t_tmin1_n_all,
+                    'logL_all': logL_all, 'x_t_t_all': x_t_t_all, 'P_t_t_all': P_t_t_all, 'K_t_all': K_t_all,
+                    'x_t_tmin1_all': x_t_tmin1_all, 'P_t_tmin1_all': P_t_tmin1_all, 'fy_t_interp_all': fy_t_interp_all}
         else:
             return x_t_n_all, P_t_n_all, P_t_tmin1_n_all, logL_all, \
                 x_t_t_all, P_t_t_all, K_t_all, x_t_tmin1_all, P_t_tmin1_all, fy_t_interp_all
@@ -958,8 +968,7 @@ class StateSpaceModel(object):
                     comp_G = current_component._m_update_g(y=y, x_t_n=x_t_n[start_idx:end_idx, :],
                                                            P_t_n=P_t_n[start_idx:end_idx, start_idx:end_idx, :],
                                                            h_t=h_t)
-                    self.G[start_idx:end_idx, start_idx:end_idx] = \
-                        comp_G if comp_G is not None else self.G[start_idx:end_idx, start_idx:end_idx]
+                    self.G[:, start_idx:end_idx] = comp_G if comp_G is not None else self.G[:, start_idx:end_idx]
 
         # Update observation noise covariance -- R
         if 'R' in update_param and 'R' not in keep_param:
@@ -970,7 +979,8 @@ class StateSpaceModel(object):
         if return_dict is None:
             pass
         elif return_dict:
-            return dict_of(self.F, self.Q, self.mu0, self.Q0, self.G, self.R, R_ss, A, B, C)
+            return {'F': self.F, 'Q': self.Q, 'mu0': self.mu0, 'Q0': self.Q0, 'G': self.G, 'R': self.R,
+                    'R_ss': R_ss, 'A': A, 'B': B, 'C': C}
         else:
             return self.F, self.Q, self.mu0, self.Q0, self.G, self.R, R_ss, A, B, C
 
@@ -1074,16 +1084,22 @@ class StateSpaceModel(object):
         return Q0
 
     @staticmethod
-    def _m_update_g(y=None, x_t_n=None, P_t_n=None, h_t=None):
+    def _m_update_g(y=None, x_t_n=None, P_t_n=None, h_t=None, C=None, D=None):
         """ Update observation matrix -- G """
-        assert len(h_t) == y.shape[1], 'Different lengths of h_t and y. Cannot proceed with _m_update_g().'
-        P = (h_t * P_t_n[:, :, 1:]).sum(axis=2) + (h_t * x_t_n[:, 1:]) @ x_t_n[:, 1:].T
-        approach = 'svd' if P.shape[0] >= 5 else 'gaussian'
-        G = (h_t * y) @ x_t_n[:, 1:].T @ inverse(P, approach=approach)
+        if C is None:
+            assert len(h_t) == y.shape[1], 'Different lengths of h_t and y. Cannot proceed with _m_update_g().'
+            C = (h_t * P_t_n[:, :, 1:]).sum(axis=2) + (h_t * x_t_n[:, 1:]) @ x_t_n[:, 1:].T
+
+        if D is None:
+            assert len(h_t) == y.shape[1], 'Different lengths of h_t and y. Cannot proceed with _m_update_g().'
+            D = (h_t * y) @ x_t_n[:, 1:].T
+
+        approach = 'svd' if C.shape[0] >= 5 else 'gaussian'
+        G = D @ inverse(C, approach=approach)
         return G
 
     @staticmethod
-    def _m_estimate_scope(update_param, keep_param):
+    def _m_estimate_scope(update_param=('F', 'Q', 'mu0', 'Q0', 'G', 'R'), keep_param=()):
         """ Sort out the scopes of updates in m_estimate() """
         if 'F' not in update_param and 'Q' not in update_param:
             update_FQ = False

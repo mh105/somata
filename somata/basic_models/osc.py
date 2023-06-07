@@ -8,7 +8,6 @@ osc module contains Matsuda oscillator specific methods used in SOMATA
 from somata.basic_models import StateSpaceModel as Ssm
 import numpy as np
 import numbers
-from sorcery import dict_of
 from math import atan2, sin, cos, sqrt
 from scipy.linalg import block_diag
 
@@ -125,9 +124,11 @@ class OscillatorModel(Ssm):
 
     # Dunder methods - magic methods
     def __repr__(self):
+        """ Unambiguous and concise representation when calling OscillatorModel() """
         return super().__repr__().replace('Ssm', 'Osc')
 
     def __str__(self):
+        """ Helpful information when calling print(OscillatorModel()) """
         print_str = super().__str__().replace('<Ssm object at', '<Osc object at')
         # Append additional information about oscillator parameters
         np.set_printoptions(precision=3)
@@ -387,7 +388,6 @@ class OscillatorModel(Ssm):
     def visualize_freq(self, version, bw=1, y=None, sim_osc=None, sim_x=None, xlim=None, ylim=None, ax=None):
         """ Visualize the frequency spectrum of real data or the theoretical PSD of the oscillation components """
         import matplotlib.pyplot as plt
-        # noinspection PyProtectedMember
         from ..multitaper import fast_psd_multitaper
 
         # using '%matplotlib notebook' allows zooming in some contexts
@@ -413,35 +413,31 @@ class OscillatorModel(Ssm):
         # Plot oscillator spectra
         if version == 'actual':
             kalman_out = self.dejong_filt_smooth(y, return_dict=True)
-            f_hz, h_i = self._oscillator_spectra(version, kalman_out['x_t_n'], bw)
+            h_i, f_hz = self._oscillator_spectra(version, kalman_out['x_t_n'], bw)
         else:
-            f_hz, h_i = self._oscillator_spectra(version)
+            h_i, f_hz = self._oscillator_spectra(version)
+        return_vals = (h_i, f_hz)
+
         h_sum = np.zeros((1, h_i[0].size))
         for ii in range(len(h_i)):
-            if version == 'actual':
-                ax.plot(f_hz, 10 * np.log10(h_i[ii]), label='osc %d, %0.2f Hz' % (ii + 1, self.freq[ii]))
-            elif version == 'theoretical':
-                ax.plot(f_hz, 10 * np.log10(2*h_i[ii]),
-                        label='osc %d, %0.2f Hz' % (ii + 1, self.freq[ii]))  # make spectrum one-sided
+            ax.plot(f_hz, 10 * np.log10(h_i[ii]), label='osc %d, %0.2f Hz' % (ii + 1, self.freq[ii]))
             h_sum += np.sqrt(h_i[ii])
+
         if version == 'theoretical':
             ax.axhline(10 * np.log10(2 * self.R), color='black', linestyle='dashed', label='obs noise')  # one-sided
-
         else:
             ax.plot(f_hz, 20 * np.log10(h_sum.squeeze()), color='gray', label='sum of components')
 
         # Handle simulated oscillator spectra plotting
         if sim_osc is not None and (sim_x is not None or version == 'theoretical'):
             # noinspection PyProtectedMember
-            f_sim, h_sim = sim_osc._oscillator_spectra(version, sim_x, bw)
+            h_sim, f_sim = sim_osc._oscillator_spectra(version, sim_x, bw)
+            return_vals += (h_sim, f_sim)
 
             for ii in range(len(h_sim)):
-                if version == 'actual':
-                    ax.plot(f_sim, 10 * np.log10(h_sim[ii]), linestyle='dashed', color=colors[ii],
-                            label='sim osc %d' % (ii + 1))
-                elif version == 'theoretical':
-                    ax.plot(f_sim, 10 * np.log10(2*h_sim[ii]), linestyle='dashed', color=colors[ii],
-                            label='sim osc %d' % (ii + 1))  # make spectrum one-sided
+                ax.plot(f_sim, 10 * np.log10(h_sim[ii]), linestyle='dashed', color=colors[ii],
+                        label='sim osc %d' % (ii + 1))
+
         elif sim_osc is None and sim_x is not None:
             raise RuntimeError('Do you want to plot empirical spectra of simulated data? If yes,'
                                'input sim_osc object in addition to latent states sim_x.')
@@ -452,18 +448,14 @@ class OscillatorModel(Ssm):
         # Final axes adjustment
         ax.legend()
         ax.set_xlabel('Frequency (Hz)')
-        ax.set_ylabel('Power (dB)')
+        ax.set_ylabel('PSD (dB)')
 
         if xlim is not None:
             ax.set_xlim(xlim)
         if ylim is not None:
             ax.set_ylim(ylim)
 
-        if sim_x is not None:
-            # noinspection PyUnboundLocalVariable
-            return f_hz, h_i, f_sim, h_sim
-        else:
-            return f_hz, h_i
+        return return_vals
 
     def visualize_time(self, y=None, plot_ospe=False, ospe_ylim=None, sim_x=None, xlim=None, fig_size=(8, 8)):
         """
@@ -536,9 +528,13 @@ class OscillatorModel(Ssm):
 
         return fig, axs, x_est
 
-    def _oscillator_spectra(self, version, x_matrix=None, bw=None):
-        """ Compute theoretical or empirical/actual oscillator spectra """
-        # noinspection PyProtectedMember
+    def _oscillator_spectra(self, version='theoretical', x_matrix=None, bw=1):
+        """
+        Compute theoretical or empirical/actual oscillator spectra
+        - Note: these spectra are one-sided from 0 Hz to Nyquist frequency,
+        and these spectra correspond to PSD estimates normalized by the
+        number of time points but not normalized by sampling frequency.
+        """
         from ..multitaper import fast_psd_multitaper
 
         if version == 'theoretical':
@@ -553,20 +549,19 @@ class OscillatorModel(Ssm):
             raise ValueError('Chosen version is not supported. Please select theoretical or actual')
 
         # noinspection PyUnboundLocalVariable
-        return f_hz, h_i
+        return h_i, f_hz
 
     def _theoretical_spectrum(self):
         """ Compute spectrum based on theoretical equation (Matsuda 2017) """
-        f_hz = np.linspace(0, self.Fs / 2, 1000)
+        f_hz = np.linspace(0, self.Fs / 2, 2**12)  # one-sided frequency 0 to Nyquist
         rads = f_hz * 2 * np.pi / self.Fs
         z = np.exp(1j * rads)
         a_i = (1 - 2 * self.a ** 2 * np.cos(self.w) ** 2 + self.a ** 4 * np.cos(2 * self.w)) / (
                 self.a * (self.a ** 2 - 1) * np.cos(self.w))
         b_i = 0.5 * (a_i - 2 * self.a * np.cos(self.w) + np.sqrt((a_i - 2 * self.a * np.cos(self.w)) ** 2 - 4))
         v_i = -self.sigma2 * self.a * np.cos(self.w) / b_i
-        h_i = [v_ii * np.abs(
-            1 + b_ii * z) ** 2 / np.abs(1 - 2 * a_ii * np.cos(w_ii) * z + a_ii ** 2 * z ** 2) ** 2 for
-               v_ii, b_ii, a_ii, w_ii in zip(v_i, b_i, self.a, self.w)]
+        h_i = [2 * v_ii * np.abs(1 + b_ii * z) ** 2 / np.abs(1 - 2 * a_ii * np.cos(w_ii) * z + a_ii ** 2 * z ** 2) ** 2
+               for v_ii, b_ii, a_ii, w_ii in zip(v_i, b_i, self.a, self.w)]  # one-sided spectrum
         return h_i, f_hz
 
     def _theoretical_phase(self):
@@ -629,7 +624,7 @@ class OscillatorModel(Ssm):
 
             # [Inverse gamma prior] on state noise covariance Q diagonal entries
             if Q_sigma2 is None:
-                assert self.Q[0, 0] == self.Q[1, 1], 'State noise sigma2 differs between real and imaginary parts'
+                assert self.Q[0, 0] == self.Q[1, 1], 'State noise sigma2 differs between real and imaginary parts.'
                 Q_sigma2 = self.Q[0, 0]
                 Q_hyperparameter = 0.1 if Q_hyperparameter is None else Q_hyperparameter
 
@@ -641,7 +636,8 @@ class OscillatorModel(Ssm):
                     R_sigma2 = self.R[0, 0]
                     R_hyperparameter = 0.1 if R_hyperparameter is None else R_hyperparameter
 
-            return dict_of(vmp_param, Q_sigma2, Q_hyperparameter, R_sigma2, R_hyperparameter)
+            return {'vmp_param': vmp_param, 'Q_sigma2': Q_sigma2, 'Q_hyperparameter': Q_hyperparameter,
+                    'R_sigma2': R_sigma2, 'R_hyperparameter': R_hyperparameter}
 
         # recursive case
         else:
@@ -730,7 +726,7 @@ class OscillatorModel(Ssm):
             beta = Q_init * (alpha + 1)  # setting the mode of inverse gamma prior to be Q_init
             sigma2_Q_new = (beta + Q_ss / 2) / (alpha + T / 2 + 1)  # mode of inverse gamma posterior
 
-        Q = sigma2_Q_new * np.eye(2, dtype=np.float64)
+        Q = sigma2_Q_new * np.eye(2, dtype=sigma2_Q_new.dtype)
         return Q
 
     @staticmethod
@@ -738,10 +734,10 @@ class OscillatorModel(Ssm):
         """ Update initial state covariance -- Q0 """
         sigma2_Q0 = OscillatorModel.tr(P_0_n + x_0_n[:, None] @ x_0_n[:, None].T
                                        - x_0_n[:, None] @ mu0.T - mu0 @ x_0_n[:, None].T + mu0 @ mu0.T) / 2
-        Q0 = sigma2_Q0 * np.eye(2, dtype=np.float64)
+        Q0 = sigma2_Q0 * np.eye(2, dtype=sigma2_Q0.dtype)
         return Q0
 
     @staticmethod
-    def _m_update_g(y=None, x_t_n=None, P_t_n=None, h_t=None):
+    def _m_update_g(y=None, x_t_n=None, P_t_n=None, h_t=None, C=None, D=None):
         """ Update observation matrix -- G (OscillatorModel has fixed G) """
         return None

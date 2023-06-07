@@ -7,7 +7,6 @@ gen module contains general Gaussian state-space model methods used in SOMATA
 from somata.basic_models import StateSpaceModel as Ssm
 from somata.exact_inference import inverse
 import numpy as np
-from sorcery import dict_of
 from scipy.linalg import block_diag
 
 
@@ -46,9 +45,11 @@ class GeneralSSModel(Ssm):
             self.comp_nstates = [self.nstate]
 
     def __repr__(self):
+        """ Unambiguous and concise representation when calling GeneralSSModel() """
         return super().__repr__().replace('Ssm', 'Gen')
 
     def __str__(self):
+        """ Helpful information when calling print(GeneralSSModel()) """
         print_str = super().__str__().replace('<Ssm object at', '<Gen object at')
         return print_str
 
@@ -81,7 +82,7 @@ class GeneralSSModel(Ssm):
                 R_sigma2 = self.R[0, 0]
                 R_hyperparameter = 0.1 if R_hyperparameter is None else R_hyperparameter
 
-        return dict_of(R_sigma2, R_hyperparameter)
+        return {'R_sigma2': R_sigma2, 'R_hyperparameter': R_hyperparameter}
 
     @staticmethod
     def _m_update_f(A=None, B=None, C=None, q_old=None, priors=None):

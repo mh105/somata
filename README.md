@@ -31,16 +31,22 @@ Advanced neural oscillator modeling techniques are brought together to work syne
 ---
 
 ## Requirements
-somata is built on `numpy` arrays for computations. `joblib` is used for multithreading. Additional dependencies include
-`matplotlib`, `scipy`, `tqdm`, `codetiming`, and `sorcery`. Full requirements for each release version will be updated
-under `install_requires` in the `setup.cfg` file. If the `environment.yml` file is used to create a new conda
-environment, all and only the required packages will be installed.
+[`somata`](https://pypi.org/project/somata/) is built on [`numpy`](https://numpy.org) arrays for computations. [`joblib`](https://joblib.readthedocs.io/en/stable/) is used for multithreading. 
+Additional dependencies include [`scipy`](https://scipy.org), [`matplotlib`](https://matplotlib.org), and [`spectrum`](https://pyspectrum.readthedocs.io/en/latest/index.html).
+An upcoming source localization module also requires [`pytorch`](https://pytorch.org) and [`MNE-python`](https://mne.tools/stable/index.html).
+Full requirements for each release version will be updated under 
+[`install_requires`](https://setuptools.pypa.io/en/latest/userguide/dependency_management.html#platform-specific-dependencies) in the [`setup.cfg`](setup.cfg) file. 
+If the [`environment.yml`](environment.yml) file is used to [create a new conda environment](https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#creating-an-environment-from-an-environment-yml-file), 
+all and only the required packages will be installed.
 
 ## Install
 
 ```
 pip install somata
 ```
+_If the [`pytorch`](https://pytorch.org) dependency is not resolved successfully by [`pip`](https://pip.pypa.io/en/stable/) for your [OS](https://whatsmyos.com), 
+first [install `pytorch` manually](https://pytorch.org/get-started/locally/) in a [conda environment](https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html) that you wish to install [`somata`](https://pypi.org/project/somata/), 
+and then [execute the above line](https://packaging.python.org/en/latest/tutorials/installing-packages/#ensure-you-can-run-pip-from-the-command-line) to install [`somata`](https://pypi.org/project/somata/)._
 
 ### (For development only)
 
@@ -48,31 +54,34 @@ pip install somata
     [How to: GitHub fork](https://docs.github.com/en/get-started/quickstart/fork-a-repo)    
 
 - ### Clone forked copy to local computer
-    ``` git clone <forked copy ssh url> ```
+    [How to: GitHub clone](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository)
 
 - ### Install conda
     [Recommended conda distribution: miniconda](https://docs.conda.io/en/latest/miniconda.html)
 
-    _Apple silicon Mac: choose conda native to the ARM64 architecture instead of Intel x86_
+    _[Apple silicon Mac](https://support.apple.com/en-us/HT211814): choose conda native to the [ARM64 architecture](https://www.anaconda.com/blog/new-release-anaconda-distribution-now-supporting-m1) instead of [Intel x86](https://en.wikipedia.org/wiki/X86)._
 
 - ### Create a new conda environment
     ``` conda install mamba -n base -c conda-forge ```\
     ``` cd <repo root directory with environment.yml> ```\
     ``` mamba env create -f environment.yml ```\
-    ``` conda activate somata ```\
-    _You may also install somata in an existing environment by skipping this step._
+    ``` conda activate somata ```
 
-- ### Install somata as a package in editable mode
+    _You may also install `somata` in an [existing environment](https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#using-pip-in-an-environment) by skipping this step._
+
+- ### Install somata as a package in development mode
     ``` cd <repo root directory with setup.py> ```\
     ``` pip install -e . ```
 
+    _[What is: Editable Installs](https://setuptools.pypa.io/en/latest/userguide/development_mode.html)_
+
 - ### Configure IDEs to use the conda environment
-    [How to: Configure an existing conda environment](https://www.jetbrains.com/help/pycharm/conda-support-creating-conda-virtual-environment.html)
+    [How to: Configure an existing conda environment](https://www.jetbrains.com/help/pycharm/conda-support-creating-conda-virtual-environment.html#existing-conda-environment)
 
 ---
 
 ## Basic state-space models
-Somata, much like a neuron body supported by dendrites, is built on a set of basic state-space models introduced as class objects.
+`somata`, much like a neuron body supported by dendrites, is built on a set of basic state-space models introduced as class objects.
 
 The motivations are to:
 - develop a standardized format to store model parameters of state-space equations
@@ -81,11 +90,11 @@ The motivations are to:
 - emulate `numpy.array()` operations including `.append()`
 - implement inference algorithms like Kalman filtering and parameter update (m-step) equations as callable class methods
 
-At present, and in the near future, somata will be focused on **time-invariant Gaussian linear dynamical systems**.
-This limit on models we consider simplifies basic models to avoid embedded classes such as `transition_model` and
-`observation_model`, at the cost of restricting somata to classical algorithms with only some extensions to
+At present, and in the near future, `somata` will be focused on **time-invariant Gaussian linear dynamical systems**.
+This limit on models we consider simplifies basic models to avoid nested classes such as `transition_model` and
+`observation_model`, at the cost of restricting `somata` to classical algorithms with only some extensions to
 Bayesian inference and learning. This is a deliberate choice to allow easier, faster, and cleaner applications of
-somata on neural data analysis, instead of to provide a full-fledged statistical inference package.
+`somata` in neural data analysis, instead of to provide a full-fledged statistical inference package.
 
 ---
 
@@ -454,32 +463,92 @@ Look at the demo script [basic_models_demo_01102022.py](examples/basic_models_de
 ---
 
 ## Advanced neural oscillator methods
-1. [Oscillator Model Learning](#osc)
-2. [Iterative Oscillator Algorithm](#ioa)
+1. [Oscillator Model Learning](#1-oscillator-model-learning)
+2. [Phase Amplitude Coupling Estimation](#2-phase-amplitude-coupling-estimation)
+3. [Iterative Oscillator Algorithm](#3-iterative-oscillator-algorithm)
+4. [Switching State-Space Inference](#4-switching-state-space-inference)
+5. [Multi-channel Oscillator Component Analysis](#5-multi-channel-oscillator-component-analysis)
+6. [State-Space Event Related Potential](#6-state-space-event-related-potential)
+7. [Dynamic Source Localization](#7-dynamic-source-localization)
 
 ---
-1. ### Oscillator Model Learning <a name="osc"></a> [<img src="https://img.shields.io/badge/Status-Functional-success.svg?logo=Python">](#osc)
+<picture>
+   <img align="right" src="https://img.shields.io/badge/Status-Functional-success.svg?logo=Python">
+</picture>
+
+### 1. Oscillator Model Learning
+
+For fitting data with oscillator models, it boils down to three steps:
+  - Initialize an oscillator model object
+  - Perform state estimation, i.e., E-step
+  - Update model parameters, i.e., M-step
+
+Given some time series `data`, we can fit an oscillator to the data using the expectation-maximization (EM) algorithm.
+```python
+from somata.basic_models import OscillatorModel as Osc
+o1 = Osc(freq=1, Fs=100, y=data)  # create an oscillator object instance
+_ = [o1.m_estimate(**o1.kalman_filt_smooth(EM=True))for x in range(50)]  # run 50 steps of EM
+```
+
 ---
-2. ### Iterative Oscillator Algorithm <a name="ioa"></a> [<img src="https://img.shields.io/badge/Status-Functional-success.svg?logo=Python">](#ioa)
+<picture>
+   <img align="right" src="https://img.shields.io/badge/Status-Missing-critical.svg?logo=Python">
+</picture>
 
-**N.B.:** We recommend downsampling to 120 Hz or less, depending on the oscillations present in your data. Highly oversampled data will make it more difficult to identify oscillatory components, increase the computational time, and could also introduce high frequency noise.
+### 2. Phase Amplitude Coupling Estimation
 
-One major goal of this method was to produce an algorithm that required minimal user intervention, if any. We recommend starting with the algorithm as is, but in the case of poor fitting, we suggest the following alterations:
-1. If the pole initialized from the one-step prediction is between two oscillations, causing poor fitting of this oscillation as it attempts to explain multiple oscillations, we recommend increasing the order of the AR model used to approximate the OSPE. Increase in increments of two, which will allow additional pairs of complex poles.
+---
+<picture>
+   <img align="right" src="https://img.shields.io/badge/Status-Functional-success.svg?logo=Python">
+</picture>
 
-2. Conversely to point 1, if the order of the AR model is too high then multiple pairs of roots will be attributed to the same oscillation, diluting the strength needed for each of them and possibly leading to none of them being selected as the strongest root in the iterative process to initialize the next oscillation, even though together they describe the strongest oscillation. This can be identified using the innovations plot with all of the AR roots plotted. In this case we recommend decreasing the AR order in increments of 2, to decrease the number of pairs of complex poles.
+### 3. Iterative Oscillator Algorithm
 
-3. If the initialization of the additional oscillations describes a single oscillation well, but the fitting of this oscillation attempts to explain multiple oscillations and causes poor fitting, we recommend increasing the concentration hyperparameter in the Von Mises prior. This will increase the weight on the initial frequency and stop the oscillation from shifting to explain other oscillations.
+For a well-commented example script, see [IterOsc_example.py](examples/IterOsc_example.py).
 
-4. If the model does not choose the correct number of oscillations, we recommend looking at all fitted models and selecting the best fitting model based on other selection criteria or using your best judgement. You can also choose a subset of well-fitted oscillations and run the kalman filter to estimate oscillations using those fitted parameters.
+_**N.B.:** We recommend downsampling to 120 Hz or less, depending on the oscillations present in your data. Highly oversampled data will make it more difficult to identify oscillatory components, increase the computational time, and could also introduce high frequency noise._
 
-5. Note that this algorithm assumes a stationary signal, and therefore stationary parameters. Although the Kalman filtering allows some flexibility in this requirement, enabling the model to work on some time-varying signal, the success of the method depends on the strength and duration of the signal components. The weaker and more brief the time-varying component is, the more poorly the model will capture it, if it does at all. We recommend decreasing the length of your window until you have a more stationary signal.
+One major goal of this method was to produce an algorithm that requires minimal user intervention, if any. This algorithm is designed to fit well automatically in most situations, but there will still be some data sets where it does not fit well without intervention. We recommend starting with the algorithm as is, but in the case of poor fitting, we suggest the following modifications:
 
-This algorithm is designed to fit well automatically in most situations, but there will still be some data sets where it does not fit well without intervention.
+1. If the model does not choose the correct number of oscillations, we recommend looking at all fitted models and selecting the best fitting model based on other selection criteria or using your best judgement. You can also choose a subset of well-fitted oscillations and run `kalman_filt_smooth()` to estimate oscillations using those fitted parameters.
 
-When using this module, please cite the following [paper](https://www.biorxiv.org/content/10.1101/2022.10.30.514422.abstract):
+2. This algorithm assumes stationary parameters, and therefore a stationary signal. Although the Kalman smoothing allows the model to work with some time-varying signal, the success of the method depends on the strength and duration of the signal components. The weaker and more brief the time-varying component is, the more poorly the model will capture it, if at all. We recommend decreasing the length of your window until you have a more stationary signal.
 
-Beck, A. M., He, M., Gutierrez, R. G., & Purdon, P. L. (2022). An iterative search algorithm to identify oscillatory dynamics in neurophysiological time series. bioRxiv.
+When using this module, please cite the following [paper](https://www.biorxiv.org/content/10.1101/2022.10.30.514422):
+
+Beck, A. M., He, M., Gutierrez, R. G., & Purdon, P. L. (2022). An iterative search algorithm to identify oscillatory dynamics in neurophysiological time series. bioRxiv, 2022-10.
+
+---
+<picture>
+   <img align="right" src="https://img.shields.io/badge/Status-Functional-success.svg?logo=Python">
+</picture>
+
+### 4. Switching State-Space Inference
+
+When using this module, please cite the following [paper](https://www.biorxiv.org/content/10.1101/2022.11.18.517120):
+
+He, M., Das, P., Hotan, G., & Purdon, P. L. (2022). Switching state-space modeling of neural signal dynamics. bioRxiv, 2022-11.
+
+---
+<picture>
+   <img align="right" src="https://img.shields.io/badge/Status-Missing-critical.svg?logo=Python">
+</picture>
+
+### 5. Multi-channel Oscillator Component Analysis
+
+---
+<picture>
+   <img align="right" src="https://img.shields.io/badge/Status-Missing-critical.svg?logo=Python">
+</picture>
+
+### 6. State-Space Event Related Potential
+
+---
+<picture>
+   <img align="right" src="https://img.shields.io/badge/Status-Missing-critical.svg?logo=Python">
+</picture>
+
+### 7. Dynamic Source Localization
 
 ---
 
@@ -490,5 +559,5 @@ Mingjian He, Proloy Das, Amanda Beck, Patrick Purdon
 Use different citation styles at: https://doi.org/10.5281/zenodo.7242130
 
 ## License
-SOMATA is licensed under the [BSD 3-Clause Clear license](https://spdx.org/licenses/BSD-3-Clause-Clear.html). \
-Copyright © 2022. All rights reserved.
+SOMATA is licensed under the [BSD 3-Clause Clear license](https://spdx.org/licenses/BSD-3-Clause-Clear.html).\
+Copyright © 2023. All rights reserved.

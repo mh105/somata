@@ -8,7 +8,6 @@ from somata.basic_models import StateSpaceModel as Ssm
 from somata.exact_inference import inverse
 import numpy as np
 import numbers
-from sorcery import dict_of
 from scipy.linalg import block_diag
 
 
@@ -90,26 +89,30 @@ class AutoRegModel(Ssm):
                     component.default_G = np.hstack([np.array([[1.]], dtype=np.float64),
                                                      np.zeros((1, self.order[ii]-1), dtype=np.float64)])
                     components.append(component)
-                self.default_G = components[0].default_G if len(components) == 1 else self.default_G
         else:
             for ii in range(len(components)):
                 current_component: AutoRegModel = components[ii]  # type: ignore
                 assert current_component.type == 'arn', 'Encountered non-arn type component.'
                 assert current_component.default_G.shape[1] == self.order[ii], 'Components mismatch AR order.'
-            self.default_G = components[0].default_G if len(components) == 1 else self.default_G  # type: ignore
+
+        # Update default_G attribute if only a single component
+        if components is not None and len(components) == 1:
+            self.default_G = components[0].default_G
 
         # Call parent class constructor
         super().__init__(components=components, F=F, Q=Q, mu0=mu0, Q0=Q0, G=G, R=R, y=y, Fs=Fs)
 
     # Dunder methods - magic methods
     def __repr__(self):
-        """ Dynamic display depending on whether a single AR model """
+        """ Unambiguous and concise representation when calling AutoRegModel() """
+        # Dynamic display depending on whether a single AR component
         if self.default_G is None:
             return super().__repr__().replace('Ssm', 'Arn')
         else:
             return 'Arn=' + str(self.default_G.shape[1]) + '<' + hex(id(self))[-4:] + '>'
 
     def __str__(self):
+        """ Helpful information when calling print(AutoRegModel()) """
         print_str = super().__str__().replace('<Ssm object at', '<Arn object at')
         # Append additional information about autoregressive parameters
         np.set_printoptions(precision=3)
@@ -226,8 +229,8 @@ class AutoRegModel(Ssm):
             next_pointer = np.argmax(F[pointer, pointer:] == 0)
             current_order = F.shape[0] - pointer if next_pointer == 0 else next_pointer - pointer
             if current_order > 1:
-                assert (F[pointer+1:pointer+current_order, pointer:pointer+current_order-1] ==
-                        np.eye(current_order-1, dtype=np.float64)).all(), \
+                assert np.all(F[pointer+1:pointer+current_order, pointer:pointer+current_order-1] ==
+                              np.eye(current_order-1, dtype=np.float64)), \
                     'Failed to guess the autoregressive model orders. Consider input order explicitly.'
             order.append(current_order)
             pointer += current_order
@@ -330,7 +333,8 @@ class AutoRegModel(Ssm):
                     R_sigma2 = self.R[0, 0]
                     R_hyperparameter = 0.1 if R_hyperparameter is None else R_hyperparameter
 
-            return dict_of(Q_sigma2, Q_hyperparameter, R_sigma2, R_hyperparameter)
+            return {'Q_sigma2': Q_sigma2, 'Q_hyperparameter': Q_hyperparameter,
+                    'R_sigma2': R_sigma2, 'R_hyperparameter': R_hyperparameter}
 
         # recursive case
         else:
@@ -383,35 +387,25 @@ class AutoRegModel(Ssm):
             beta = Q_init * (alpha + 1)  # setting the mode of inverse gamma prior to be Q_init
             sigma2_Q_new = (beta + Q_ss / 2) / (alpha + T / 2 + 1)  # mode of inverse gamma posterior
 
-        Q = np.zeros_like(F, dtype=np.float64)
+        Q = np.zeros_like(F, dtype=sigma2_Q_new.dtype)
         Q[0, 0] = sigma2_Q_new
         return Q
 
     @staticmethod
     def _m_update_mu0(x_0_n=None):
         """ Update initial state mean -- mu0 """
-        mu0 = np.zeros((x_0_n.shape[0], 1), dtype=np.float64)
+        mu0 = np.zeros((x_0_n.shape[0], 1), dtype=x_0_n.dtype)
         mu0[0, 0] = x_0_n[0]
-        return mu0
-
-    @staticmethod
-    def _m_update_mu0_src(x_0_n=None, nstate=None):
-        """
-        Update initial state mean mu0 in dynamic
-        source localization
-        """
-        mu0 = np.zeros((x_0_n.shape[0], 1), dtype=np.float64)
-        mu0[0::nstate, 0] = x_0_n[0::nstate]
         return mu0
 
     @staticmethod
     def _m_update_q0(x_0_n=None, P_0_n=None, mu0=None):
         """ Update initial state covariance -- Q0 """
-        Q0 = np.zeros(P_0_n.shape, dtype=np.float64)
+        Q0 = np.zeros(P_0_n.shape, dtype=P_0_n.dtype)
         Q0[0, 0] = P_0_n[0, 0] + x_0_n[0]**2 - 2 * x_0_n[0] * mu0[0, 0] + mu0[0, 0]**2
         return Q0
 
     @staticmethod
-    def _m_update_g(y=None, x_t_n=None, P_t_n=None, h_t=None):
+    def _m_update_g(y=None, x_t_n=None, P_t_n=None, h_t=None, C=None, D=None):
         """ Update observation matrix -- G (AutoRegModel has fixed G) """
         return None

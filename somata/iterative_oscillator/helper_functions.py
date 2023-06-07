@@ -1,59 +1,31 @@
-""" Author: Amanda Beck <ambeck@mit.edu> """
+"""
+Author: Amanda Beck <ambeck@mit.edu>
+        Mingjian He <mh105@mit.edu>
+"""
 
 import numpy as np
 from numpy import random
-from numpy.linalg import eig, inv
-from scipy.linalg import toeplitz
-from spectrum import aryule, arma_estimate, arma2psd, arburg
+from spectrum import aryule, arma2psd, arburg
 import matplotlib.pyplot as plt
 from kneed import KneeLocator
 from ..multitaper import fast_psd_multitaper
 from ..basic_models import OscillatorModel as Osc
 
 
-def innovations_wrapper(iter_osc, osc_num, fig_size=(8, 6), plot_all_poles=False, horizontal=False, ax_limit=None):
-    """ Plots the innovations for models in the original scale, used for Beck et al. 2022 """
-    osc = iter_osc.fitted_osc[osc_num]  # we're using the scaled version like in the iterations
-    innovations, ll = find_innovations(osc, y=iter_osc.added_osc[0].y)
+def innovations_wrapper(iter_osc, iter_num, plot_all_poles=True, ax_limit=None, fig_size=(8, 6), horizontal=False):
+    """ Plots the innovations for fitted models, used for Beck et al. 2022 """
+    y = iter_osc.added_osc[0].y
+    osc = iter_osc.fitted_osc[iter_num]
+    innovations, ll = find_innovations(osc, y=y)
 
-    add_freq, add_radius, all_freq, all_radii, a, b = initialize_newosc(osc.Fs, innovations, existing_freqs=None,
-                                                                        ar_order=iter_osc.ar_order,
-                                                                        burg_flag=iter_osc.burg_flag)
+    add_freq = iter_osc.added_osc[iter_num + 1].freq[0] if iter_num + 1 < len(iter_osc.added_osc) else None
+    add_radius = iter_osc.added_osc[iter_num + 1].a[0] if iter_num + 1 < len(iter_osc.added_osc) else None
 
-    axlim, fig = innovations_plot(osc, iter_osc.added_osc[0].y, innovations, a, b, add_freq,
-                                  plot_all_poles=plot_all_poles,
-                                  ax_limit=ax_limit, fig_size=fig_size, horizontal=horizontal)
+    a, b, _ = fit_ar(np.squeeze(innovations), iter_osc.osc_range * 2 - 1, iter_osc.burg_flag)
+    axlim, fig = innovations_plot(osc, y, innovations, a, b, add_freq, add_radius, plot_all_poles=plot_all_poles,
+                                  ax_limit=ax_limit, fig_size=fig_size, horizontal=horizontal, counter=iter_num)
 
     return axlim, fig
-
-
-def initial_param(y, fs, noise_start, ar_order=13, burg_flag=False):
-    """ Scale y data and prepare initialization of OscillatorModel object """
-    R_est = initialize_r(y, fs, noise_start)
-    power = np.ceil(200 / fs)
-    y_scaled = y / np.sqrt(R_est)
-    # TODO: test remove scaling all together and set R here to be R_est directly
-    add_freq, _, _, _, _, b = initialize_newosc(fs, y_scaled, ar_order=ar_order, burg_flag=burg_flag)
-    osc_init = {'y': y_scaled, 'a': 0.98 ** power, 'freq': add_freq, 'sigma2': b,
-                'Fs': fs, 'R': b}
-    return osc_init, R_est
-
-
-def initialize_r(y, fs, noise_start, noise_end=None, variance=False):
-    """ Find mean power above a certain frequency (noise_start) """
-    fft_data = np.fft.fftshift(np.fft.fft(np.squeeze(y)))
-    psd_data = np.abs(fft_data) ** 2 / y.size
-    freq = np.linspace(-fs / 2, fs / 2, psd_data.size)
-
-    min_idx = np.argmin(np.abs(freq - noise_start))
-    max_idx = np.argmin(np.abs(freq - noise_end)) if noise_end is not None else None
-    noise_spectrum = psd_data[min_idx:max_idx]
-    R_estimated = np.mean(noise_spectrum)
-
-    if variance:  # also return the variance across the specified noise frequencies
-        return R_estimated, np.var(noise_spectrum)
-    else:
-        return R_estimated
 
 
 def find_innovations(osc, y=None):
@@ -65,34 +37,46 @@ def find_innovations(osc, y=None):
     return (y - y_pred).squeeze(), kalman_out['logL'].sum()
 
 
-def initialize_newosc(fs, innovations, existing_freqs=None, ar_order=13, burg_flag=False):
-    """ Fit AR model to innovations """
+def fit_ar(y, ar_order, burg_flag=False):
+    """ Fit AR model to a time series """
     if burg_flag:  # use Burg algorithm
-        a, p, k = arburg(np.squeeze(innovations), ar_order)
+        a, p, k = arburg(y, ar_order)
     else:  # default is Yule Walker algorithm
-        a, p, k = aryule(np.squeeze(innovations), ar_order)
+        a, p, k = aryule(y, ar_order)
+    return a, p, k
+
+
+def get_ar_psd(fs, a, p, ar_hz=None, df=0.01):
+    """ Get the PSD spectrum of a fitted AR model """
+    if ar_hz is None:
+        nfft = int(2 ** np.ceil(np.log2(fs / df)))  # nfft to achieve a [< df] sampling resolution of frequencies
+        ar_hz = np.arange(0, fs / 2, fs / nfft)  # one-sided frequency 0 to Nyquist
+        assert ar_hz.size == nfft // 2, 'Incorrect nfft in the AR theoretical spectrum.'
+    ar_psd = arma2psd(A=a, rho=p, NFFT=2 * ar_hz.size, sides='centerdc')[ar_hz.size:] * 2  # make spectrum one-sided
+    return ar_psd, ar_hz
+
+
+def initialize_newosc(fs, innovations, existing_freqs=None, freq_res=1, ar_order=13, burg_flag=False):
+    """ Initialize the new oscillator to be added """
+    a, p, k = fit_ar(np.squeeze(innovations), ar_order, burg_flag)
     r = np.roots(np.concatenate(([1], a)))
     sampling_constant = fs / 2 / np.pi
     root_freqs = np.abs(np.arctan2(np.imag(r), np.real(r)) * sampling_constant)  # force to positive frequencies
-    root_radii = np.abs(r)
-    root_radii_copy = root_radii.copy()
-    if existing_freqs is not None:
-        root_radii_copy[np.isin(root_freqs, existing_freqs)] = -1  # ignore frequencies with existing oscillators
-    largest_root_idx = np.argmax(root_radii_copy)
-    add_freq = root_freqs[largest_root_idx]
-    add_radius = root_radii[largest_root_idx]
+    root_radii = np.abs(r)  # compute the magnitude of complex roots
+
+    # within [freq_res] Hz of existing frequencies is considered as duplicated
+    root_freqs_idx = [min(abs(x - existing_freqs)) >= freq_res
+                      if existing_freqs is not None else True for x in root_freqs]
+
+    # look for the root with the largest AR theoretical PSD scaled by radius
+    ar_psd, ar_hz = get_ar_psd(fs, a, p)
+    root_psd = np.array(
+        [ar_psd[np.argmin(abs(freq - ar_hz))] * radius for freq, radius in zip(root_freqs, root_radii)])
+    sel_idx = np.argmax(root_psd[root_freqs_idx])
+    add_freq = max([root_freqs[root_freqs_idx][sel_idx], 0.1])  # lower bound added frequency to 0.1 Hz
+    add_radius = root_radii[root_freqs_idx][sel_idx]
+
     return add_freq, add_radius, root_freqs, root_radii, a, p
-
-
-def initialize_arma(fs, innovations, ar_order=7):
-    """ Fit ARMA model to innovations """
-    a, b, rho = arma_estimate(innovations, ar_order, 1, ar_order + 5)
-    r = np.roots(np.concatenate(([1], a)))
-    sampling_constant = fs / 2 / np.pi
-    root_freqs = np.abs(np.arctan2(np.imag(r), np.real(r)) * sampling_constant)
-    root_radii = np.abs(r)
-    largest_root = np.argmax(root_radii)
-    return root_freqs[largest_root], root_radii[largest_root], root_freqs, root_radii, a, b, rho
 
 
 def aic_calc(osc, ll):
@@ -118,7 +102,7 @@ def get_knee(ll_vec):
     """ Use 'kneed' python package to find knee/elbow """
     kneedle = KneeLocator(range(len(ll_vec)), ll_vec, S=1.0, curve="concave",
                           direction="increasing")
-    return kneedle.knee  # Returns int,  index of model at knee
+    return kneedle.knee  # Returns int, index of model at knee
 
 
 def simulate_matsuda(param_list, R=1, Fs=100, T=10):
@@ -238,72 +222,65 @@ def visualize_em(em_params, y, bw=None):
     plt.figure()
     Fs = em_params[0].Fs
     psd_mt, f_hz = fast_psd_multitaper(y, Fs, 0, Fs / 2, bw)
-    plt.plot(f_hz.squeeze(), 10 * np.log10(psd_mt.squeeze()), color='black', label='observed data')
+    plt.plot(f_hz, 10 * np.log10(psd_mt), color='black', label='observed data')
     cm = plt.get_cmap('coolwarm')
     for ii in range(len(em_params)):
         # noinspection PyProtectedMember
-        h_i = em_params[ii]._theoretical_spectrum()
+        h_i, f_th = em_params[ii]._theoretical_spectrum()
         for jj in range(len(h_i)):
             cl = int(ii / len(em_params) * 256)  # y further 0~Convert to 255
-            plt.plot(f_hz, 10 * np.log10(h_i[jj]), c=cm(cl))
+            plt.plot(f_th, 10 * np.log10(h_i[jj]), c=cm(cl))
     plt.legend()
     plt.xlabel('Frequency (Hz)')
-    plt.ylabel('Power (dB)')
+    plt.ylabel('PSD (dB)')
 
 
-def innovations_plot(osc, y, innovations, a, b, add_freq, plot_all_poles=False, ax_limit=None, fig_size=(8, 6),
-                     horizontal=False, bw=2):
+def innovations_plot(osc, y, innovations, a, b, add_freq=None, add_radius=None, plot_all_poles=False, ax_limit=None,
+                     fig_size=(8, 6), horizontal=False, bw=1, counter=0):
     """ Plot fitted OscillatorModel and the innovations / one-step prediction error for that model """
     psd_mt, fy_hz = fast_psd_multitaper(innovations, osc.Fs, 0, osc.Fs / 2, bw)
-    ar_psd = arma2psd(A=a, rho=b, NFFT=2 * fy_hz.size, T=osc.Fs, sides='centerdc')
-    psd_y, freq_y = fast_psd_multitaper(y.squeeze(), osc.Fs, 0, osc.Fs / 2, bw)
+    psd_ar, _ = get_ar_psd(osc.Fs, a, b, ar_hz=fy_hz)
+    psd_y, _ = fast_psd_multitaper(y.squeeze(), osc.Fs, 0, osc.Fs / 2, bw)
 
     if horizontal:
         fig, [ax0, ax1] = plt.subplots(1, 2, figsize=fig_size)
     else:
         fig, [ax0, ax1] = plt.subplots(2, 1, sharex='all', figsize=fig_size)
-    ax0.plot(freq_y, 10 * np.log10(psd_y), color='black', label='observed data')
+    ax0.plot(fy_hz, 10 * np.log10(psd_y), color='black', label='observed data')
 
     kalman_out = osc.dejong_filt_smooth(y, return_dict=True)
 
     # noinspection PyProtectedMember
-    f_th, h_th = osc._oscillator_spectra('theoretical', kalman_out['x_t_n'], bw)
-    h_sum = np.zeros((1, h_th[0].size))
+    h_th, f_th = osc._oscillator_spectra('theoretical', kalman_out['x_t_n'], bw)
     for ii in range(len(h_th)):
-        ax0.plot(f_th, 10 * np.log10(2*h_th[ii]),
-                 label='osc %d fit, %0.2f Hz' % (ii + 1, osc.freq[ii]))  # make spectrum one-sided
-        h_sum += np.sqrt(h_th[ii])
-    h_sum += np.sqrt(osc.R)
+        ax0.plot(f_th, 10 * np.log10(h_th[ii]), label='osc %d fit, %0.2f Hz' % (ii + 1, osc.freq[ii]))
     ax0.legend(loc='upper right')
-    ax0.set_ylabel('Power (dB)')
-    ax0.set_title('Iteration %d' % len(h_th))
+    ax0.set_ylabel('PSD (dB)')
+    ax0.set_title('Iteration %d' % counter)
 
     ax1.plot(fy_hz, 10 * np.log10(psd_mt), label='OSPE', color='tab:blue')
-    ax1.plot(fy_hz, 10 * np.log10(ar_psd[fy_hz.size:] * osc.Fs * 2), linestyle='dashed', color='tab:blue',
-             label='AR fit')
+    ax1.plot(fy_hz, 10 * np.log10(psd_ar), label='AR fit', linestyle='dashed', color='tab:blue')
     if ax_limit is not None:
         ax1.set_ylim(ax_limit)
 
     ax1.set_xlabel('Frequency (Hz)')
-    ax1.set_ylabel('Power (dB)', color='tab:blue')
+    ax1.set_ylabel('PSD (dB)', color='tab:blue')
     ax1.tick_params(axis='y', labelcolor='tab:blue')
 
-    ax1.set_title('One-Step Prediction Error (OSPE) - Iteration %d' % len(h_th))
-    ax1.axvline(add_freq, color='black', linestyle='dashed', label='frequency of new oscillation, %0.2f Hz' % add_freq)
+    ax1.set_title('One-Step Prediction Error (OSPE) - Iteration %d' % counter)
+    if add_freq is not None:
+        ax1.axvline(add_freq, color='black', linestyle='dashed',
+                    label='frequency of new oscillator: %0.2f Hz' % add_freq)
     # ax1.axhline(20 * np.log10(b), color='black', label='observation noise estimate')
-    ax1.legend(loc='upper right')
-
-    r = np.roots(np.concatenate(([1], a)))
-    sampling_constant = osc.Fs / 2 / np.pi
-    root_freqs = np.abs(np.arctan2(np.imag(r), np.real(r)) * sampling_constant)
-    for rf in range(len(root_freqs)):
-        if root_freqs[rf] == osc.Fs / 2:
-            root_freqs[rf] = 0
 
     ax2 = ax1.twinx()
     if plot_all_poles:
+        r = np.roots(np.concatenate(([1], a)))
+        sampling_constant = osc.Fs / 2 / np.pi
+        root_freqs = np.abs(np.arctan2(np.imag(r), np.real(r)) * sampling_constant)  # force to positive frequencies
         ax2.scatter(root_freqs, np.abs(r), color='tab:orange')
-    ax2.scatter(add_freq, np.max(abs(r)), facecolor='tab:green', linewidth=2, label='pole for initialization')
+    if add_freq is not None and add_radius is not None:
+        ax2.scatter(add_freq, add_radius, facecolor='tab:green', linewidth=2, label='pole for initialization')
 
     ax2.set_ylim([0, 1])
     ax2.set_xlabel('Frequency (Hz)')
@@ -316,7 +293,7 @@ def innovations_plot(osc, y, innovations, a, b, add_freq, plot_all_poles=False, 
 
     lines, labels = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
-    ax2.legend(lines + lines2, labels + labels2, loc='upper right')
+    ax2.legend(lines + lines2, labels + labels2, loc='lower center')
 
     fig.tight_layout()  # otherwise, the right y-label is slightly clipped
     plt.show()
@@ -324,66 +301,16 @@ def innovations_plot(osc, y, innovations, a, b, add_freq, plot_all_poles=False, 
     return ax1.get_ylim(), fig
 
 
-def compare_arma(fs, innovations, a, b, add_freq):
-    """ Plot AR and ARMA models to compare """
-    add_freq1, add_radius1, root_freqs1, root_radii1, a1, b1, rho1 = initialize_arma(fs, innovations)
-    psd_mt, fy_hz = fast_psd_multitaper(innovations, fs, 0, fs / 2, 1)
-    ar_psd = arma2psd(A=a, rho=b, NFFT=2 * fy_hz.size, T=fs, sides='centerdc')
-    arma_psd = arma2psd(A=a1, B=b1, rho=rho1, NFFT=2 * fy_hz.size, T=fs, sides='centerdc')
+def plot_fit_line(fig, slope, intercept):
+    """ Add a linear fit line to an existing innovation plot figure """
+    ax = fig.axes[1]
+    x_limits = ax.get_xlim()
+    ax.plot(x_limits, [x * slope + intercept for x in x_limits], label='linear fit', color='black')
+    ax.set_xlim(x_limits)
 
-    fig, ax = plt.subplots(2, 1, sharex='all', figsize=(8, 8))
-    ax[0].plot(fy_hz, 10 * np.log10(psd_mt), label='observed data')
-    ax[0].plot(fy_hz, 10 * np.log10(arma_psd[fy_hz.size:] * fs * 2), linestyle='dashed',
-               label='arma')  # sqrt(2) factor may be off
-    ax[0].plot(fy_hz, 10 * np.log10(ar_psd[fy_hz.size:] * fs * 2), label='ar')
-    ax[0].set_ylabel('Power (dB)')
-    ax[0].set_title('Innovations')
-    ax[0].axvline(add_freq, color='black', label='AR fit')
-    ax[0].axvline(add_freq1, color='black', linestyle='dashed', label='ARMA fit')
-    ax[0].axhline(10 * np.log10(b), color='black', label='_nolegend_')
-    ax[0].axhline(10 * np.log10(rho1), color='black', linestyle='dashed', label='_nolegend_')
-    ax[0].legend()
+    lines, labels = ax.get_legend_handles_labels()
+    lines2, labels2 = fig.axes[2].get_legend_handles_labels()
+    fig.axes[2].legend(lines + lines2, labels + labels2, loc='lower center')
 
-    r = np.roots(np.concatenate(([1], a)))
-    sampling_constant = fs / 2 / np.pi
-    root_freqs = np.abs(np.arctan2(np.imag(r), np.real(r)) * sampling_constant)
-    z = np.roots(np.concatenate(([1], b1)))
-    for rf in range(len(root_freqs)):
-        if root_freqs[rf] == fs / 2:
-            root_freqs[rf] = 0
-        if root_freqs1[rf] == fs / 2:
-            root_freqs1[rf] = 0
-
-    ax[1].scatter(root_freqs, np.abs(r), color='tab:green', label='ar poles')
-    ax[1].scatter(root_freqs1, root_radii1, color='tab:orange', label='arma poles')
-    ax[1].scatter(0, np.abs(z), marker='^', color='tab:orange', label='arma zeroes')
-    ax[1].set_xlabel('Frequency (Hz)')
-    ax[1].set_ylabel('Root (magnitude)')
-
-    print('ARMA: add freq: %0.2f Hz, add radius: %0.3f, add q: %0.3f' % (add_freq1, add_radius1, rho1))
-
-
-def find_a(y, p, Ri=None):
-    """ Fit AR parameters based on R (Matsuda and Komaki 2017) """
-    Ck = np.asarray([cov_k(y, ii) for ii in range(p + 1)])
-    C = toeplitz(Ck)
-
-    if Ri is None:
-        w, v = eig(C)
-        Ri = np.min(np.abs(w))
-    C_new = C - Ri * np.eye(p + 1)
-
-    a_vec = np.squeeze(inv(C_new[:-1, :-1]) @ Ck[1:, None])
-    Q = Ck[0] - np.sum(a_vec * Ck[1:])
-
-    return a_vec, Q, Ri, Ck
-
-
-def cov_k(y, k):
-    """ Calculate covariance at lag k """
-    N = y.size
-    y = y.squeeze()
-    if k > 0:
-        return np.sum(y[:(-k)] * y[k:]) / N
-    else:
-        return np.sum(y ** 2) / N
+    fig.show()
+    return fig
