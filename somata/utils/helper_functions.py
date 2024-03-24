@@ -1,5 +1,5 @@
 """
-Author: Mingjian He <mh105@mit.edu>
+Author: Mingjian He <mh1@stanford.edu>
 
 general helper functions used throughout SOMATA
 """
@@ -50,18 +50,29 @@ def estimate_r(y, Fs, freq_cutoff, plot_freqz=False):
     if plot_freqz:
         import matplotlib.pyplot as plt
         w, h = signal.sosfreqz(sos, fs=Fs)
-        plt.figure()
-        plt.plot(w, 20 * np.log10(np.maximum(np.abs(h), 1e-3)))
-        plt.title('Butterworth filter frequency response')
-        plt.xlabel('Frequency [Hz]')
-        plt.ylabel('Amplitude [dB]')
-        plt.margins(0, 0.1)
-        plt.grid(which='both', axis='both')
-        plt.axvline(Fs_nq, color='green')
-        plt.show()
+        fig, ax = plt.subplots()
+        ax.plot(w, 20 * np.log10(np.maximum(np.abs(h), 1e-3)))
+        ax.set_title('Butterworth filter frequency response')
+        ax.set_xlabel('Frequency [Hz]')
+        ax.set_ylabel('Amplitude [dB]')
+        ax.margins(0, 0.1)
+        ax.grid(which='both', axis='both')
+        ax.set_xlim([0, Fs_nq])
 
     # Apply the high pass filter and estimate observation noise covariance
-    y_filt = signal.sosfiltfilt(sos, y)
+    y_filt = signal.sosfiltfilt(sos, np.squeeze(y))
     R = np.cov(y_filt) * Fs_nq / (Fs_nq - wp)  # scale up based on wp
 
     return R
+
+
+def wrapToPi(x):
+    """ Wrap phase value in radian to -pi~pi """
+    x_wrap = np.remainder(x, 2 * np.pi)
+    mask = np.abs(x_wrap) > np.pi
+    x_wrap[mask] -= 2 * np.pi * np.sign(x_wrap[mask])
+    mask1 = x < 0
+    mask2 = np.remainder(x, np.pi) == 0
+    mask3 = np.remainder(x, 2 * np.pi) != 0
+    x_wrap[mask1 & mask2 & mask3] -= 2 * np.pi
+    return x_wrap

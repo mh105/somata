@@ -1,5 +1,5 @@
 """
-Author: Mingjian He <mh105@mit.edu>
+Author: Mingjian He <mh1@stanford.edu>
 
 em module contains a general run_em() function that works across SOMATA
 """

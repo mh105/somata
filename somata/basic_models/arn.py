@@ -1,5 +1,5 @@
 """
-Author: Mingjian He <mh105@mit.edu>
+Author: Mingjian He <mh1@stanford.edu>
 
 arn module contains autoregressive model of order n methods used in SOMATA
 """
@@ -202,6 +202,11 @@ class AutoRegModel(Ssm):
         self.coeff = None if len(self.coeff) == 0 else self.coeff
         self.sigma2 = None if len(self.sigma2) == 0 else self.sigma2
 
+    def fill_components(self, empty_comp=None, deep_copy=True):
+        """ Fill the components attribute with AutoRegModel parameters """
+        empty_comp = AutoRegModel() if empty_comp is None else empty_comp
+        return super().fill_components(empty_comp=empty_comp, deep_copy=deep_copy)
+
     def fill_arn_param(self, F=None, Q=None):
         """ Attempt to fill autoregressive parameters """
         F = self.F if F is None else F
@@ -213,8 +218,17 @@ class AutoRegModel(Ssm):
         elif F is not None:
             self.order = self._guess_ar_order(F=F)
         coeff, sigma2 = self._ssm_to_arn_param(F=F, Q=Q)
-        self.coeff = coeff if F is not None else self.coeff
-        self.sigma2 = sigma2 if Q is not None else self.sigma2
+        self.coeff = coeff if coeff is not None else self.coeff
+        self.sigma2 = sigma2 if sigma2 is not None else self.sigma2
+
+    def fill_ssm_param(self, order=None, coeff=None, sigma2=None):
+        """ Attempt to fill state space model parameters """
+        order = self.order if order is None else order
+        coeff = self.coeff if coeff is None else coeff
+        sigma2 = self.sigma2 if sigma2 is None else sigma2
+        F, Q = self._arn_to_ssm_param(order=order, coeff=coeff, sigma2=sigma2)
+        self.F = F if F is not None else self.F
+        self.Q = Q if Q is not None else self.Q
 
     def _guess_ar_order(self, F=None):
         """
@@ -339,7 +353,7 @@ class AutoRegModel(Ssm):
         # recursive case
         else:
             assert self.components is not None, 'Cannot initialize priors outside base case when components is None.'
-            components_prefill = self.fill_components(empty_comp=AutoRegModel(), deep_copy=True)
+            components_prefill = self.fill_components()
 
             # expand the specified prior values to the length of components
             Q_sigma2 = self._initialize_priors_recursive_list(Q_sigma2)
@@ -360,7 +374,7 @@ class AutoRegModel(Ssm):
             return priors
 
     @staticmethod
-    def _m_update_f(A=None, B=None, C=None, priors=None):
+    def _m_update_f(A=None, B=None, priors=None):
         """ Update transition matrix -- F """
         # Update the AR coefficients -- coeff (no prior)
         approach = 'svd' if A.shape[0] >= 5 else 'gaussian'
@@ -392,10 +406,48 @@ class AutoRegModel(Ssm):
         return Q
 
     @staticmethod
+    def _m_update_q_src(Q_ss=None, T=None, Q_basis=None, nsource=None, nstate=None, priors=None):
+        """
+        Update state noise covariance matrix Q in dynamic
+        source localization with a single Q_basis, in the
+        Q_basis block diagonal form
+        """
+        import torch
+        from ..source_loc import SourceLocModel as Src
+        assert Q_ss.shape[0] == nsource * nstate, 'Q_ss does not match the dimension of AutoRegModel of ' \
+                                                  'order ' + str(nstate) + ' across ' + str(nsource) + ' sources.'
+
+        # Take the sums of squares from the first diagonal block
+        Q_ss_block = Q_ss[0:nsource, 0:nsource]
+
+        # Update the expansion coefficient for each source
+        Q_new = torch.zeros_like(Q_ss, dtype=Q_ss.dtype).cuda()
+        if type(Q_basis) is list:  # using non-orthonormal kernel
+            Theta = Src.update_theta(Q_ss=Q_ss_block, T=T, Q_basis=Q_basis[1],
+                                     nsource=nsource, npart=1, priors=priors)
+            Q_new[0:nsource, 0:nsource] = Q_basis[0] @ torch.diag(Theta) @ Q_basis[0].T
+        else:  # using orthonormal basis
+            Theta = Src.update_theta(Q_ss=Q_ss_block, T=T, Q_basis=Q_basis,
+                                     nsource=nsource, npart=1, priors=priors)
+            Q_new[0:nsource, 0:nsource] = Q_basis @ torch.diag(Theta) @ Q_basis.T
+        return Q_new
+
+    @staticmethod
     def _m_update_mu0(x_0_n=None):
         """ Update initial state mean -- mu0 """
         mu0 = np.zeros((x_0_n.shape[0], 1), dtype=x_0_n.dtype)
         mu0[0, 0] = x_0_n[0]
+        return mu0
+
+    @staticmethod
+    def _m_update_mu0_src(x_0_n=None, nstate=None):
+        """
+        Update initial state mean mu0 in dynamic
+        source localization
+        """
+        import torch
+        mu0 = torch.zeros((x_0_n.shape[0], 1), dtype=x_0_n.dtype).cuda()
+        mu0[0::nstate, 0] = x_0_n[0::nstate]
         return mu0
 
     @staticmethod

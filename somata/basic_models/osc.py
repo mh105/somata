@@ -1,5 +1,5 @@
 """
-Author: Mingjian He <mh105@mit.edu>
+Author: Mingjian He <mh1@stanford.edu>
         Amanda Beck <ambeck@mit.edu>
 
 osc module contains Matsuda oscillator specific methods used in SOMATA
@@ -26,11 +26,7 @@ class OscillatorModel(Ssm):
     w = None
     sigma2 = None
     dc_idx = None
-
-    # temporary attributes related to whitener, organize later
-    D = None
-    gamma = None
-    K = None
+    whitener = None
     y_whiten = None
 
     def __init__(self, a=None, freq=None, w=None, sigma2=None, add_dc=False,
@@ -259,19 +255,39 @@ class OscillatorModel(Ssm):
         self.rappend(OscillatorModel(w=0., sigma2=sigma2, add_dc=False))
         self.dc_idx = 0  # update the index for DC oscillator
 
+    def fill_components(self, empty_comp=None, deep_copy=True):
+        """ Fill the components attribute with OscillatorModel parameters """
+        empty_comp = OscillatorModel() if empty_comp is None else empty_comp
+        return super().fill_components(empty_comp=empty_comp, deep_copy=deep_copy)
+
     def fill_osc_param(self, F=None, Q=None, Fs=None):
         """ Attempt to fill oscillator parameters """
         F = self.F if F is None else F
         Q = self.Q if Q is None else Q
         Fs = self.Fs if Fs is None else Fs
         a, w, sigma2 = self._ssm_to_osc_param(F=F, Q=Q)
-        self.a = a if F is not None else self.a
-        self.w = w if F is not None else self.w
-        self.sigma2 = sigma2 if Q is not None else self.sigma2
+        self.a = a if a is not None else self.a
+        self.w = w if w is not None else self.w
+        self.sigma2 = sigma2 if sigma2 is not None else self.sigma2
         if self.w is not None and Fs is not None:
-            freq_hz = [OscillatorModel.rad_to_hz(x, Fs) for x in self.w] if self.w.size > 1 else \
-                OscillatorModel.rad_to_hz(self.w, Fs)
-            self.freq = np.asanyarray(freq_hz, dtype=np.float64)
+            self.freq = OscillatorModel.rad_to_hz(self.w, Fs)
+
+    def fill_ssm_param(self, a=None, w=None, freq=None, sigma2=None, Fs=None):
+        """ Attempt to fill state space model parameters """
+        a = self.a if a is None else a
+        Fs = self.Fs if Fs is None else Fs
+        if w is not None and Fs is not None:
+            if freq is not None:
+                assert (freq == OscillatorModel.rad_to_hz(w, Fs)).all(), 'Inconsistent input frequency parameters.'
+            self.w = w
+            self.freq = OscillatorModel.rad_to_hz(w, Fs)
+        freq = self.freq if freq is None else freq
+        if freq is not None and Fs is not None:
+            self.w = OscillatorModel.hz_to_rad(freq, Fs)
+        sigma2 = self.sigma2 if sigma2 is None else sigma2
+        F, Q = self._osc_to_ssm_param(a=a, w=self.w, sigma2=sigma2)
+        self.F = F if F is not None else self.F
+        self.Q = Q if Q is not None else self.Q
 
     def _ssm_to_osc_param(self, F=None, Q=None):
         """ Convert from matrices F and Q to oscillator parameters """
@@ -357,6 +373,33 @@ class OscillatorModel(Ssm):
         return frequency_rad * sampling_frequency / (2 * np.pi)
 
     # Visualization methods - Author: Amanda Beck <ambeck@mit.edu>
+    def whiten(self, filter_type='sos'):
+        """
+        Adapted from Purdon and Weisskoff, Human Brain Mapping (1998), fit dc component and then
+        whiten by inverting a fitted AR1 (the dc component)
+        """
+        # Make sure the dc component is fitted. This is why we allow only one component
+        assert self.dc_idx is not None, 'DC Component is necessary for whitening. dc_idx is None.'
+        assert self.ncomp == 1, 'More than one component. Only whiten with a single dc component.'
+
+        # Calculate the whitening filter
+        # noinspection PyProtectedMember
+        from .._preprocessing._colored_noise_utils import _spectral_factorization, _setup_filters
+        sos1, sos2, (D, gamma, K) = _spectral_factorization(self.R, self.sigma2, self.a)
+        # noinspection PyAttributeOutsideInit
+        self.whitener = dict(D=D, gamma=gamma, K=(D, gamma, K))
+
+        # Apply whitening filter with LCCDE
+        if filter_type == 'LCCDE':
+            self.y_whiten = np.concatenate((self.y[0], np.zeros(self.y.size - 1)))
+            for ii in range(self.y.size - 1):
+                self.y_whiten[0, ii + 1] = np.sqrt(self.whitener['K']) * (
+                        self.y[0, ii + 1] - self.whitener['gamma'] * self.y[0, ii]) + self.a * self.y_whiten[0, ii]
+        if filter_type == 'sos':
+            whitener, colorer = _setup_filters(sos1, sos2)
+            # noinspection PyAttributeOutsideInit
+            self.y_whiten = whitener(self.y)
+
     def visualize_freq(self, version, bw=1, y=None, sim_osc=None, sim_x=None, xlim=None, ylim=None, ax=None):
         """ Visualize the frequency spectrum of real data or the theoretical PSD of the oscillation components """
         import matplotlib.pyplot as plt
@@ -366,6 +409,7 @@ class OscillatorModel(Ssm):
         # Create an axes handle for the plot if needed
         if ax is None:
             _, ax = plt.subplots(1, 1)
+        fig = ax.get_figure()
         colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
         # colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:pink', 'tab:olive', 'tab:cyan']
 
@@ -385,14 +429,13 @@ class OscillatorModel(Ssm):
         # Plot oscillator spectra
         if version == 'actual':
             kalman_out = self.dejong_filt_smooth(y, return_dict=True)
-            h_i, f_hz = self._oscillator_spectra(version, kalman_out['x_t_n'], bw)
+            h_i, f_hz = self.oscillator_spectra(version, kalman_out['x_t_n'][:, 1:], bw)
         else:
-            h_i, f_hz = self._oscillator_spectra(version)
-        return_vals = (h_i, f_hz)
+            h_i, f_hz = self.oscillator_spectra(version)
 
         h_sum = np.zeros((1, h_i[0].size))
         for ii in range(len(h_i)):
-            ax.plot(f_hz, 10 * np.log10(h_i[ii]), label='osc %d, %0.2f Hz' % (ii + 1, self.freq[ii]))
+            ax.plot(f_hz, 10 * np.log10(h_i[ii]), label='osc %d, %0.2f Hz' % (ii + 1, np.float64(self.freq[ii])))
             h_sum += np.sqrt(h_i[ii])
 
         if version == 'theoretical':
@@ -402,9 +445,7 @@ class OscillatorModel(Ssm):
 
         # Handle simulated oscillator spectra plotting
         if sim_osc is not None and (sim_x is not None or version == 'theoretical'):
-            # noinspection PyProtectedMember
-            h_sim, f_sim = sim_osc._oscillator_spectra(version, sim_x, bw)
-            return_vals += (h_sim, f_sim)
+            h_sim, f_sim = sim_osc.oscillator_spectra(version, sim_x, bw)
 
             for ii in range(len(h_sim)):
                 ax.plot(f_sim, 10 * np.log10(h_sim[ii]), linestyle='dashed', color=colors[ii],
@@ -421,15 +462,15 @@ class OscillatorModel(Ssm):
         ax.legend()
         ax.set_xlabel('Frequency (Hz)')
         ax.set_ylabel('PSD (dB)')
-
         if xlim is not None:
             ax.set_xlim(xlim)
         if ylim is not None:
             ax.set_ylim(ylim)
+        fig.set_tight_layout(True)
 
-        return return_vals
+        return fig
 
-    def visualize_time(self, y=None, plot_ospe=False, ospe_ylim=None, sim_x=None, xlim=None, fig_size=(8, 8)):
+    def visualize_time(self, y=None, plot_ospe=False, ospe_ylim=None, sim_x=None, xlim=None, figsize=(8, 8)):
         """
         Visualize time series from fitted oscillations.
         sim_x is a 2 dim array (2*ncomp, T) containing the simulated latent states
@@ -451,8 +492,8 @@ class OscillatorModel(Ssm):
             y_pred = self.G @ x_pred
             ospe = (y - y_pred).squeeze()
 
-        fig, axs = plt.subplots(subplot_total, 1, figsize=fig_size) \
-            if plot_ospe is False else plt.subplots(subplot_total + 1, 1, figsize=fig_size)
+        fig, axs = plt.subplots(subplot_total, 1, sharex='all', figsize=figsize) \
+            if plot_ospe is False else plt.subplots(subplot_total + 1, 1, sharex='all', figsize=figsize)
 
         # Plot observed and estimated total signal (y)
         axs[0].plot(ta, y.squeeze(), color='black')
@@ -494,13 +535,11 @@ class OscillatorModel(Ssm):
         else:
             axs[subplot_total - 1].set_xlabel('Time (sec)')
 
-        plt.tight_layout()
-        plt.show()
-        # plt.linkaxes('x')
+        fig.set_tight_layout(True)
 
-        return fig, axs, x_est
+        return fig, x_est
 
-    def _oscillator_spectra(self, version='theoretical', x_matrix=None, bw=1):
+    def oscillator_spectra(self, version='theoretical', x_matrix=None, bw=1):
         """
         Compute theoretical or empirical/actual oscillator spectra
         - Note: these spectra are one-sided from 0 Hz to Nyquist frequency,
@@ -518,14 +557,14 @@ class OscillatorModel(Ssm):
                 psd_mt, f_hz = fast_psd_multitaper(x_matrix[ii * 2, :], self.Fs, 0, self.Fs / 2, bw)
                 h_i.append(psd_mt)
         else:
-            raise ValueError('Chosen version is not supported. Please select theoretical or actual')
+            raise ValueError('Chosen version is not supported. Please select theoretical or actual.')
 
         # noinspection PyUnboundLocalVariable
         return h_i, f_hz
 
-    def _theoretical_spectrum(self):
+    def _theoretical_spectrum(self, f_hz=None):
         """ Compute spectrum based on theoretical equation (Matsuda 2017) """
-        f_hz = np.linspace(0, self.Fs / 2, 2**12)  # one-sided frequency 0 to Nyquist
+        f_hz = np.linspace(0, self.Fs / 2, 2**12) if f_hz is None else f_hz  # one-sided frequency 0 to Nyquist
         rads = f_hz * 2 * np.pi / self.Fs
         z = np.exp(1j * rads)
         a_i = (1 - 2 * self.a ** 2 * np.cos(self.w) ** 2 + self.a ** 4 * np.cos(2 * self.w)) / (
@@ -560,7 +599,7 @@ class OscillatorModel(Ssm):
             if priors is None:
                 priors: list = [None] * self.ncomp
                 priors[self.dc_idx] = {'dc': True}
-            elif type(priors) == dict:
+            elif type(priors) is dict:
                 priors['dc'] = True
                 priors = [priors]
             else:
@@ -614,7 +653,7 @@ class OscillatorModel(Ssm):
         # recursive case
         else:
             assert self.components is not None, 'Cannot initialize priors outside base case when components is None.'
-            components_prefill = self.fill_components(empty_comp=OscillatorModel(), deep_copy=True)
+            components_prefill = self.fill_components()
 
             # expand the specified prior values to the length of components
             f_prior = self._initialize_priors_recursive_list(f_prior)
@@ -651,7 +690,7 @@ class OscillatorModel(Ssm):
         return vmp_dict['kappa'] * np.cos(estimate - vmp_dict['w_prior'])
 
     @staticmethod
-    def _m_update_f(A=None, B=None, C=None, priors=None):
+    def _m_update_f(A=None, B=None, priors=None):
         """ Update transition matrix -- F """
         # Update the rotation radian -- w (adaptive Von Mises prior)
         if Ssm._m_update_if_mle(['dc', 'vmp_param'], priors):
@@ -671,7 +710,7 @@ class OscillatorModel(Ssm):
             raise RuntimeError('Could not set m_update rule for rotation radian w. Please check.')
 
         # Update the rotation damping factor -- a (no prior)
-        a_new = (cos(w_new) * OscillatorModel.tr(B) + sin(w_new) * OscillatorModel.rt(B)) / OscillatorModel.tr(C)
+        a_new = (cos(w_new) * OscillatorModel.tr(B) + sin(w_new) * OscillatorModel.rt(B)) / OscillatorModel.tr(A)
 
         # Construct transition matrix -- F
         F = OscillatorModel.get_rot_mat(a_new, w_new)
@@ -700,6 +739,37 @@ class OscillatorModel(Ssm):
 
         Q = sigma2_Q_new * np.eye(2, dtype=sigma2_Q_new.dtype)
         return Q
+
+    @staticmethod
+    def _m_update_q_src(Q_ss=None, T=None, Q_basis=None, nsource=None, nstate=None, priors=None):
+        """
+        Update state noise covariance matrix Q in dynamic
+        source localization with a single Q_basis, in the
+        Q_basis block diagonal form
+        """
+        import torch
+        from ..source_loc import SourceLocModel as Src
+        assert nstate == 2, 'OscillatorModel must have a component state dimension of 2.'
+        assert Q_ss.shape[0] == nsource * nstate, 'Q_ss does not match the dimension of OscillatorModel' \
+                                                  ' across ' + str(nsource) + ' sources.'
+
+        # Combine sums of squares across diagonal blocks
+        Q_ss_block = torch.zeros((nsource, nsource), dtype=Q_ss.dtype).cuda()
+        for j in range(nstate):
+            start_idx = j * nsource
+            end_idx = (j + 1) * nsource
+            Q_ss_block += Q_ss[start_idx:end_idx, start_idx:end_idx]
+
+        # Update the expansion coefficient for each source
+        if type(Q_basis) is list:  # using non-orthonormal kernel
+            Theta = Src.update_theta(Q_ss=Q_ss_block, T=T, Q_basis=Q_basis[1],
+                                     nsource=nsource, npart=nstate, priors=priors)
+            Q_new = torch.block_diag(*[Q_basis[0] @ torch.diag(Theta) @ Q_basis[0].T] * nstate)
+        else:  # using orthonormal basis
+            Theta = Src.update_theta(Q_ss=Q_ss_block, T=T, Q_basis=Q_basis,
+                                     nsource=nsource, npart=nstate, priors=priors)
+            Q_new = torch.block_diag(*[Q_basis @ torch.diag(Theta) @ Q_basis.T] * nstate)
+        return Q_new
 
     @staticmethod
     def _m_update_q0(x_0_n=None, P_0_n=None, mu0=None):

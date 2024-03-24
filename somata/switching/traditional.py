@@ -1,5 +1,5 @@
 """
-Author: Mingjian He <mh105@mit.edu>
+Author: Mingjian He <mh1@stanford.edu>
 
 traditional module contains traditional methods for switching inference
 """
@@ -56,7 +56,7 @@ def switching(ssm_array, y=None, method='static', dwell_prob=0.99, A=None,
             np.ones((K, K), dtype=np.float64) * (1-dwell_prob) / (K-1)) if A is None else A
 
     """
-    Choose among the various switching state-space methods: 
+    Choose among the various switching state-space methods:
         - 'static' is similar to 'a parp'
         - 'gpb1'   is similar to '1991'
         - 'gpb2'   is similar to 'imm'

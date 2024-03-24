@@ -2,10 +2,15 @@
 .DS_Store
 ._.DS_Store
 
+# VS Code
+.vscode/
+
+# PyCharm
+.idea/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 .pytest_cache
-.idea
 
 # C extensions
 *.so

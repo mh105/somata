@@ -33,7 +33,7 @@ Advanced neural oscillator modeling techniques are brought together to work syne
 ## Requirements
 [`somata`](https://pypi.org/project/somata/) is built on [`numpy`](https://numpy.org) arrays for computations. [`joblib`](https://joblib.readthedocs.io/en/stable/) is used for multithreading. 
 Additional dependencies include [`scipy`](https://scipy.org), [`matplotlib`](https://matplotlib.org), and [`spectrum`](https://pyspectrum.readthedocs.io/en/latest/index.html).
-An upcoming source localization module also requires [`pytorch`](https://pytorch.org) and [`MNE-python`](https://mne.tools/stable/index.html).
+The source localization module also requires [`pytorch`](https://pytorch.org) and [`MNE-python`](https://mne.tools/stable/index.html).
 Full requirements for each release version will be updated under 
 [`install_requires`](https://setuptools.pypa.io/en/latest/userguide/dependency_management.html#platform-specific-dependencies) in the [`setup.cfg`](setup.cfg) file. 
 If the [`environment.yml`](environment.yml) file is used to [create a new conda environment](https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#creating-an-environment-from-an-environment-yml-file), 
@@ -46,17 +46,16 @@ $ pip install somata
 
 ### conda-forge channel
 While [`pip install`](https://pip.pypa.io/en/stable/cli/pip_install/) usually works, [an alternative way](https://pythonspeed.com/articles/conda-vs-pip/) to install `somata` is through the [conda-forge](https://conda-forge.org/docs/index.html) [channel](https://docs.conda.io/projects/conda/en/latest/user-guide/concepts/channels.html#what-is-a-conda-channel), which utilizes [continuous integration (CI)](https://conda-forge.org/docs/user/ci-skeleton.html) [across OS platforms](https://conda-forge.org/docs/user/introduction.html#why-conda-forge).
-This means [conda-forge packages](https://conda-forge.org/feedstock-outputs/index.html) are more [compatible with each other](https://conda-forge.org/docs/maintainer/adding_pkgs.html#avoid-external-dependencies) compared to [Python Package Index (PyPI) packages](https://pypi.org) installed by [`pip` by default](https://packaging.python.org/en/latest/tutorials/installing-packages/#installing-from-pypi).
+This means [conda-forge packages](https://conda-forge.org/feedstock-outputs/index.html) are more [compatible with each other](https://conda-forge.org/docs/maintainer/adding_pkgs.html#avoid-external-dependencies) compared to [Python Package Index (PyPI) packages](https://pypi.org) installed via [`pip` by default](https://packaging.python.org/en/latest/tutorials/installing-packages/#installing-from-pypi).
 When `somata` is installed into an [existing conda environment](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#viewing-a-list-of-your-environments), unmet dependencies are automatically searched, downloaded, and installed from the same repository of packages containing `somata`. 
-If `pip install somata` fails to resolve some dependencies, the [conda-forge feedstock](https://github.com/conda-forge/conda-feedstock#terminology) can be used instead:
+If `pip install somata` fails to resolve some dependencies, the [conda-forge somata](https://github.com/conda-forge/somata-feedstock) [feedstock](https://github.com/conda-forge/conda-feedstock#terminology) can be used to install:
 ```
 $ conda install somata -c conda-forge
 ```
 
 ### torch requirement
 If the [`pytorch`](https://pytorch.org) dependency is not resolved correctly for your [OS](https://whatsmyos.com), 
-first [install `pytorch` manually](https://pytorch.org/get-started/locally/) in a [conda environment](https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html) that you wish to install [`somata`](https://pypi.org/project/somata/), 
-and then rerun either of the above two lines to install `somata`.
+first [install `pytorch` manually](https://pytorch.org/get-started/locally/) in a [conda environment](https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html) that you want to install `somata` in, and then rerun either of the above two lines to install `somata`.
 
 ### (For development only)
 
@@ -67,12 +66,11 @@ and then rerun either of the above two lines to install `somata`.
     [How to: GitHub clone](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository)
 
 - ### Install conda
-    [Recommended conda distribution: miniconda](https://docs.conda.io/en/latest/miniconda.html)
+    [Recommended conda distribution: Miniforge3](https://github.com/conda-forge/miniforge#miniforge3)
 
-    _[Apple silicon Mac](https://support.apple.com/en-us/HT211814): choose conda native to the [ARM64 architecture](https://www.anaconda.com/blog/new-release-anaconda-distribution-now-supporting-m1) instead of [Intel x86](https://en.wikipedia.org/wiki/X86)._
+    _[Apple silicon Mac](https://support.apple.com/en-us/HT211814): choose Miniforge3 native to the [ARM64 architecture](https://www.anaconda.com/blog/new-release-anaconda-distribution-now-supporting-m1) instead of [Intel x86](https://en.wikipedia.org/wiki/X86)._
 
 - ### Create a new conda environment
-    ``` $ conda install mamba -n base -c conda-forge ```\
     ``` $ cd <repo root directory with environment.yml> ```\
     ``` $ mamba env create -f environment.yml ```\
     ``` $ conda activate somata ```
@@ -81,7 +79,7 @@ and then rerun either of the above two lines to install `somata`.
 
 - ### Install somata as a package in development mode
     ``` $ cd <repo root directory with setup.py> ```\
-    ``` $ pip install -e . ```
+    ``` $ pip install -e . --config-settings editable_mode=compat ```
 
     _[What is: Editable Installs](https://setuptools.pypa.io/en/latest/userguide/development_mode.html)_
 
@@ -468,7 +466,7 @@ Gen(1)<2440>
 ```
 
 ### For more in-depth working examples with the basic models in somata
-Look at the demo script [basic_models_demo_01102022.py](examples/basic_models_demo_01102022.py) and execute the code line by line to get familiar with class objects and methods of somata basic models.
+Look at the demo script [basic_models_demo_08302023.py](examples/basic_models_demo_08302023.py) and execute the code line by line to get familiar with class objects and methods of somata basic models.
 
 ---
 
@@ -535,9 +533,9 @@ Beck, A. M., He, M., Gutierrez, R. G., & Purdon, P. L. (2022). An iterative sear
 
 ### 4. Switching State-Space Inference
 
-When using this module, please cite the following [paper](https://www.biorxiv.org/content/10.1101/2022.11.18.517120):
+When using this module, please cite the following [paper](https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1011395):
 
-He, M., Das, P., Hotan, G., & Purdon, P. L. (2022). Switching state-space modeling of neural signal dynamics. bioRxiv, 2022-11.
+He, M., Das, P., Hotan, G., & Purdon, P. L. (2023). Switching state-space modeling of neural signal dynamics. PLOS Computational Biology, 19(8), e1011395.
 
 ---
 <picture>
@@ -555,7 +553,7 @@ He, M., Das, P., Hotan, G., & Purdon, P. L. (2022). Switching state-space modeli
 
 ---
 <picture>
-   <img align="right" src="https://img.shields.io/badge/Status-Missing-critical.svg?logo=Python">
+   <img align="right" src="https://img.shields.io/badge/Status-Functional-success.svg?logo=Python">
 </picture>
 
 ### 7. Dynamic Source Localization

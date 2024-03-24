@@ -67,6 +67,6 @@ with Timer():
     src1 = Src(components=components, fwd=fwd)
     x_t_n, P_t_n = src1.learn(y=y, max_iter=max_iter)
 
-    plt.figure(); plt.plot(x[vidx, :]); plt.title('True source')
-    plt.figure(); plt.plot(x_t_n[vidx*2, :]); plt.title('estimated activity')
-    plt.figure(); plt.plot(x_t_n[:, 4]); plt.title('all source activity')
+    plt.figure(); plt.plot(x[vidx, :]); plt.title('True source')  # noqa: E702
+    plt.figure(); plt.plot(x_t_n[vidx*2, :]); plt.title('estimated activity')  # noqa: E702
+    plt.figure(); plt.plot(x_t_n[:, 4]); plt.title('all source activity')  # noqa: E702

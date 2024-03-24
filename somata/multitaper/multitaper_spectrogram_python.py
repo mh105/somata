@@ -8,14 +8,14 @@ import warnings
 import timeit
 from joblib import Parallel, delayed, cpu_count
 # Visualization imports
-import colorcet  # this import is necessary to add rainbow colormap to matplotlib
+import colorcet  # this import is necessary to add rainbow colormap to matplotlib  # noqa: F401
 import matplotlib.pyplot as plt
 
 
 # MULTITAPER SPECTROGRAM #
 def multitaper_spectrogram(data, fs, frequency_range=None, time_bandwidth=5, num_tapers=None, window_params=None,
                            min_nfft=0, detrend_opt='linear', multiprocess=False, n_jobs=None, weighting='unity',
-                           plot_on=True, return_fig=False, clim_scale=True, verbose=True, xyflip=False):
+                           plot_on=True, return_fig=False, clim_scale=True, verbose=True, xyflip=False, ax=None):
     """ Compute multitaper spectrogram of timeseries data
     Usage:
     mt_spectrogram, stimes, sfreqs = multitaper_spectrogram(data, fs, frequency_range=None, time_bandwidth=5,
@@ -46,6 +46,7 @@ def multitaper_spectrogram(data, fs, frequency_range=None, time_bandwidth=5, num
                 clim_scale (bool): automatically scale the colormap on the plotted spectrogram (default: True)
                 verbose (bool): display spectrogram properties (default: True)
                 xyflip (bool): transpose the mt_spectrogram output (default: False)
+                ax (axes): a matplotlib axes to plot the spectrogram on (default: None)
         Returns:
                 mt_spectrogram (TxF np array): spectral power matrix
                 stimes (1xT np array): timepoints (s) in mt_spectrogram
@@ -166,7 +167,7 @@ def multitaper_spectrogram(data, fs, frequency_range=None, time_bandwidth=5, num
     if verbose:
         print("\n Multitaper compute time: " + "%.2f" % (toc - tic) + " seconds")
 
-    if all(mt_spectrogram.flatten() == 0):
+    if np.all(mt_spectrogram.flatten() == 0):
         print("\n Data was all zeros, no output")
 
     # Plot multitaper spectrogram
@@ -180,7 +181,10 @@ def multitaper_spectrogram(data, fs, frequency_range=None, time_bandwidth=5, num
         extent = [stimes[0]-dx, stimes[-1]+dx, sfreqs[-1]+dy, sfreqs[0]-dy]
 
         # Plot spectrogram
-        fig, ax = plt.subplots()
+        if ax is None:
+            fig, ax = plt.subplots()
+        else:
+            fig = ax.get_figure()
         im = ax.imshow(spect_data, extent=extent, aspect='auto')
         fig.colorbar(im, ax=ax, label='PSD (dB)', shrink=0.8)
         ax.set_xlabel("Time (HH:MM:SS)")
@@ -193,7 +197,6 @@ def multitaper_spectrogram(data, fs, frequency_range=None, time_bandwidth=5, num
             clim = np.percentile(spect_data, [5, 98])  # from 5th percentile to 98th
             im.set_clim(clim)  # actually change colorbar scale
 
-        fig.show()
         if return_fig:
             return mt_spectrogram, stimes, sfreqs, (fig, ax)
 

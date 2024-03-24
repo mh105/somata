@@ -1,5 +1,23 @@
 # Release log
 
+## 0.4.1
+*March 2024*
+
+#### New features
+
+- Introduce a spectral factorization method to initialize oscillator parameters
+- Introduce DecomposedOscillatorModel to supersede the iOsc algorithm in most applications
+- Rename iterative_oscillator module to oscillator_search
+- Introduce diagnostic plotting and statistical tests for analyzing residuals
+- Introduce dynamic source localization with oscillator models utilizing GPU processing
+
+#### Closed issues
+
+- Fix an issue with h_t and y lengths in _m_update_r
+- Fix an extra parameter in basic_models_demo
+- Unify the output arguments of spectrum as (psd, freq)
+- Update instruction on editable pip install to work with static code analyzers
+
 ## 0.3.1
 *June 2023*
 

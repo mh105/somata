@@ -1,5 +1,5 @@
 import torch
-import matplotlib; matplotlib.use('TkAgg')
+import matplotlib; matplotlib.use('TkAgg')  # noqa: E702
 import matplotlib.pyplot as plt
 import mne
 import pickle

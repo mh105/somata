@@ -1,5 +1,5 @@
 """
-Author: Mingjian He <mh105@mit.edu>
+Author: Mingjian He <mh1@stanford.edu>
 
 gen module contains general Gaussian state-space model methods used in SOMATA
 """
@@ -33,16 +33,8 @@ class GeneralSSModel(Ssm):
         :param Fs: sampling frequency in Hz
         """
         # Call parent class constructor
-        super().__init__(F=F, Q=Q, mu0=mu0, Q0=Q0, G=G, R=R, y=y, Fs=Fs)
+        super().__init__(components=components, F=F, Q=Q, mu0=mu0, Q0=Q0, G=G, R=R, y=y, Fs=Fs)
         self.default_G = np.ones((1, self.nstate), dtype=np.float64)
-
-        # Fill in the components attribute
-        if components == 'Gen':
-            component = GeneralSSModel(components=None)  # type: ignore
-            component.default_G = np.ones((1, self.nstate), dtype=np.float64)
-            self.components = [component]
-            self.ncomp = 1
-            self.comp_nstates = [self.nstate]
 
     def __repr__(self):
         """ Unambiguous and concise representation when calling GeneralSSModel() """
@@ -69,6 +61,11 @@ class GeneralSSModel(Ssm):
         default_Q = block_diag(*[E] * order)
         return default_Q
 
+    def fill_components(self, empty_comp=None, deep_copy=True):
+        """ Fill the components attribute with GeneralSSModel parameters """
+        empty_comp = GeneralSSModel() if empty_comp is None else empty_comp
+        return super().fill_components(empty_comp=empty_comp, deep_copy=deep_copy)
+
     # Parameter estimation methods (M step)
     def initialize_priors(self, R_sigma2=None, R_hyperparameter=None):
         """ Initialize priors for general state-space component """
@@ -85,7 +82,7 @@ class GeneralSSModel(Ssm):
         return {'R_sigma2': R_sigma2, 'R_hyperparameter': R_hyperparameter}
 
     @staticmethod
-    def _m_update_f(A=None, B=None, C=None, q_old=None, priors=None):
+    def _m_update_f(A=None, B=None, priors=None):
         """ Update transition matrix -- F """
         approach = 'svd' if A.shape[0] >= 5 else 'gaussian'
         F = B @ inverse(A, approach=approach)
@@ -96,3 +93,28 @@ class GeneralSSModel(Ssm):
         """ Update state noise covariance matrix -- Q """
         Q = (C - B @ F.T - F @ B.T + F @ A @ F.T) / T
         return Q
+
+    @staticmethod
+    def _m_update_q_src(Q_ss=None, T=None, Q_basis=None, nsource=None, nstate=None, priors=None):
+        """
+        Update state noise covariance matrix Q in dynamic
+        source localization, in the Q_basis block diagonal
+        form
+        """
+        import torch
+        from ..source_loc import SourceLocModel as Src
+        assert Q_basis.shape == Q_ss.shape, 'GeneralSSModel has non-diagonal entries of component Q, ' \
+                                            'therefore Q_basis must span the expanded space instead of nsource.'
+        assert Q_ss.shape[0] == nsource * nstate, 'Q_ss does not match the dimension of GeneralSSModel with '\
+                                                  + str(nstate) + ' states across ' + str(nsource) + ' sources.'
+
+        # GeneralSSModel has a full matrix of sum of squares
+        if type(Q_basis) is list:  # using non-orthonormal kernel
+            Theta = Src.update_theta(Q_ss=Q_ss, T=T, Q_basis=Q_basis[1],
+                                     nsource=nsource, npart=1, priors=priors)
+            Q_new = Q_basis[0] @ torch.diag(Theta) @ Q_basis[0].T
+        else:  # using orthonormal basis
+            Theta = Src.update_theta(Q_ss=Q_ss, T=T, Q_basis=Q_basis,
+                                     nsource=nsource, npart=1, priors=priors)
+            Q_new = Q_basis @ torch.diag(Theta) @ Q_basis.T
+        return Q_new

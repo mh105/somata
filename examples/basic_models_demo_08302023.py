@@ -1,4 +1,4 @@
-# Author: Mingjian He <mh105@mit.edu>
+# Author: Mingjian He <mh1@stanford.edu>
 """ Demo of SOMATA (basic_models) """
 
 # noinspection PyProtectedMember
@@ -12,6 +12,7 @@ from codetiming import Timer
 
 # Load an example data
 input_data = _load_data("kalman_inputs.mat")
+_ = input_data.pop('R_weights')  # remove extra variable
 #
 #
 # ####################################################
@@ -169,8 +170,8 @@ print(o5)
 
 # Of course EM still works
 o5.R = np.array([[0.5]])
-o5.m_estimate(**o5.dejong_filt_smooth(y=input_data['y'],
-                                      EM=True),
+o5.m_estimate(y=input_data['y'],
+              **o5.dejong_filt_smooth(y=input_data['y'], EM=True),
               keep_param=('R',))
 print(o5)
 

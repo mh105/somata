@@ -1,9 +1,10 @@
 """
-Author: Mingjian He <mh105@mit.edu>
+Author: Mingjian He <mh1@stanford.edu>
 
 Dynamic programming (also known as belief propagation) algorithms for exact inference
 """
 
+import torch
 import numpy as np
 from scipy.linalg import solve_triangular
 
@@ -121,7 +122,7 @@ def baum_welch(A_init, py_x, p1_init, maxEM_iter=100):
     return A, p1, EM_iter, logL_list
 
 
-def viterbi(A, py_x, p1=None):
+def viterbi(A, py_x, p1=None, ignore_numerr=False):
     """
     Classical Viterbi algorithm for discrete state HMM to solve argmax exact
     inference. Note that we use the log-probability version to cope with
@@ -137,6 +138,7 @@ def viterbi(A, py_x, p1=None):
     :param A: transition probability matrix
     :param py_x: observation probability
     :param p1: initial prior of hidden state at t=1
+    :param ignore_numerr: whether to ignore warning messages of numerical errors
     """
     # Model dimensions
     K = A.shape[0]
@@ -145,6 +147,9 @@ def viterbi(A, py_x, p1=None):
 
     # Initialize prior at t=1
     p1 = np.ones(K) / K if p1 is None else p1
+
+    if ignore_numerr:
+        old_settings = np.seterr(divide='ignore')  # only ignore log(0) error
 
     # Initialize the trellises
     Tre_p = np.zeros((K, T))  # store max probability
@@ -168,15 +173,29 @@ def viterbi(A, py_x, p1=None):
     for ii in range(K):
         bin_path[ii, viterbi_path == ii] = 1
 
+    if ignore_numerr:
+        # noinspection PyUnboundLocalVariable
+        np.seterr(**old_settings)
+
     return viterbi_path, bin_path
 
 
 def logdet(A):
     """ Computes logdet using Schur complement (Non-torch) """
     log_det = np.log(A[0, 0])
-    for i in range(0, A.shape[0]-1):
+    for i in range(A.shape[0]-1):
         A = A[1:, 1:] - (A[1:, 0] @ A[0, 1:]) / A[0, 0]
         log_det += np.log(A[0, 0])
+    return log_det
+
+
+def logdet_torch(A):
+    """ Computes logdet using Schur complement """
+    log_det = torch.log(A[0, 0])
+    for i in range(A.shape[0]-1):
+        A = A[1:, 1:] - torch.matmul(torch.unsqueeze(A[1:, 0], -1),
+                                     torch.unsqueeze(A[0, 1:], 0))/A[0, 0]
+        log_det += torch.log(A[0, 0])
     return log_det
 
 
@@ -395,7 +414,7 @@ def djkalman(F, Q, mu0, Q0, G, R, y, R_weights=None, skip_interp=True):
     else:
         # fy_t_interp = normpdf(y_t | y_1,...,y_t-1,y_t+1,y_T)
         fy_t_interp = np.zeros(T)  # (index 1 corresponds to t=1, etc.)
-        for ii in range(0, T):  # t=1 -> t=T
+        for ii in range(T):  # t=1 -> t=T
             n_t = invD_t[:, :, ii+1] @ e_t[:, ii+1] - K_t[:, :, ii+1].T @ r_t[:, ii+1]
             N_t = invD_t[:, :, ii+1] + K_t[:, :, ii+1].T @ R_t[:, :, ii+1] @ K_t[:, :, ii+1]
             # See De Jong 1989 Section 5, note that -logdet(N_t) is NOT a typo
@@ -406,6 +425,161 @@ def djkalman(F, Q, mu0, Q0, G, R, y, R_weights=None, skip_interp=True):
             fy_t_interp[ii] = np.exp(-(qlog2pi - logdet(N_t) + n_t.T @ invN_t @ n_t) / 2)
 
     return x_t_n, P_t_n, P_t_tmin1_n, logL, x_t_t, P_t_t, K_t, x_t_tmin1, P_t_tmin1, fy_t_interp
+
+
+def djkalman_conv_torch(F, Q, mu0, Q0, G, R, y, conv_steps=100, dtype=torch.float32):
+    """
+    A convergent version of djkalman() implemented in Pytorch
+
+    State space model is defined as follows:
+        x(t) = F*x(t-1)+eta(t)   eta ~ N(0,Q) (state or transition equation)
+        y(t) = G*x(t)+eps(t)     eps ~ N(0,R) (observation or measurement equation)
+
+    djkalman_conv_torch provides a pytorch based implementation (for gpu) that
+    computes the one-step prediction and the smoothed estimate, as well as
+    their covariance matrices. The function uses forward and backward
+    recursions, and uses a convergent approach to compute steady state version
+    of the Kalman gain (and hence the covariance matrices) for reducing
+    runtime.
+
+    Authors: Ran Liu <rliu20@mgh.harvard.edu>
+             Mingjian He <mh1@stanford.edu>
+
+    Input:
+    -----
+    F: Nx x Nx matrix
+        time-invariant transition matrix in transition equation.
+    Q: Nx x Nx matrix
+        time-invariant covariance matrix for the error in transition equation.
+    mu0: Nx x 1
+        initial state mean vector.
+    Q0: Nx x Nx
+        covariance matrix of the initial state vector.
+    G: Ny x Nx matrix
+        time-invariant measurement matrix in measurement equation.
+    R: Ny x Ny matrix
+        time-invariant covariance matrix for the error in measurement equation.
+    y: Ny x T matrix
+        containing data (y(1), ... , y(T)).
+    conv_steps: int (default 100)
+        Kalman gain is updated up to this many steps
+    dtype: cuda tensor data type (default torch.float32)
+        the tensor precision data type for GPU processing
+
+    Output:
+    ------
+    x_t_n: Nx x T matrix
+        smoothed state vectors.
+    P_t_n: Nx x Nx matrix
+        SS covariance matrices of smoothed state vectors.
+    P_t_tmin1_n: Nx x Nx matrix
+        SS cross-covariance (lag 1) matrices of smoothed state vectors.
+    logL: 1 x T vector (float)
+        value of the log likelihood function of the SSM at each time point
+        under assumption that observation noise eps(t) is normally distributed.
+    break_conv: logical flag (boolean)
+        whether numerical accuracy limit reached during convergence
+    K_t: Nx x Nx matrix
+        SS Kalman gain.
+    x_t_tmin1: Nx x T matrix
+        one-step predicted state vectors.
+    P_t_tmin1: Nx x Nx matrix
+        SS mean square error of predicted state vectors.
+    """
+    # Vector dimensions
+    q, T = y.shape
+    p = mu0.shape[0]
+
+    # Kalman filtering (forward pass)
+    x_t_tmin1 = torch.zeros(p, T+2, dtype=dtype).cuda()  # (index 1 corresponds to t=0, etc.)
+    K_t = torch.zeros(p, q, dtype=dtype).cuda()
+    e_t = torch.zeros(q, T+1, dtype=dtype).cuda()
+    # noinspection PyUnusedLocal
+    D_t = torch.zeros(q, q, dtype=dtype).cuda()
+    invD_t = torch.zeros(q, q, dtype=dtype).cuda()
+    log_det_Dt = torch.zeros(1).cuda()
+    L_t = torch.zeros(p, p, dtype=dtype).cuda()
+    logL = torch.zeros(T, dtype=dtype).cuda()  # (index 1 corresponds to t=1)
+    qlog2pi = q * torch.log(torch.as_tensor(2 * torch.pi, dtype=dtype).cuda())
+    break_conv = False
+
+    # Initialize
+    x_t_tmin1[:, 1] = torch.matmul(F, mu0)[:, 0]  # x_1_0 (W_0*beta in De Jong 1989)
+    P_t_tmin1 = torch.matmul(torch.matmul(F, Q0), F.T) + Q  # P_1_0 (V_0 in De Jong 1989)
+
+    # Recursion of forward pass until convergence of predicted covariance matrix
+    for ii in range(1, conv_steps+1):  # t=1 -> t=conv_steps
+        # Intermediate vectors
+        e_t[:, ii] = y[:, ii-1] - torch.matmul(G, x_t_tmin1[:, ii])
+        FP = torch.matmul(F, P_t_tmin1)
+
+        # Check for numerical precision limit
+        temp_D_t = torch.matmul(torch.matmul(G, P_t_tmin1), G.T) + R
+        temp_invD_t = inverse_torch(temp_D_t, approach='svd')
+        temp_K_t = torch.matmul(torch.matmul(FP, G.T), temp_invD_t)
+        temp_L_t = F - torch.matmul(temp_K_t, G)
+        temp_P_t_tmin1 = torch.matmul(FP, temp_L_t.T) + Q
+
+        # If precision limit reached, must accept last variables as converged
+        if torch.as_tensor(torch.diag(temp_P_t_tmin1) < 0).any():
+            break_conv = True
+            invD_t = invD_t * float('nan') if ii < 10 else invD_t  # set invD_t to nan if too few iterations
+        else:
+            D_t = temp_D_t
+            invD_t = temp_invD_t
+            K_t = temp_K_t
+            L_t = temp_L_t
+            P_t_tmin1 = temp_P_t_tmin1
+
+        # One-step prediction for the next time point
+        x_t_tmin1[:, ii+1] = torch.matmul(F, x_t_tmin1[:, ii]) + torch.matmul(K_t, e_t[:, ii])
+
+        # Innovation form of the log likelihood
+        log_det_Dt = logdet_torch(D_t)  # logdet of prediction error covariance also converges
+        logL[ii-1] = -(qlog2pi + log_det_Dt + torch.matmul(
+            torch.matmul(torch.unsqueeze(e_t[:, ii], 0), invD_t),
+            torch.unsqueeze(e_t[:, ii], -1))) / 2
+
+        if break_conv:
+            conv_steps = ii
+            break
+
+    # Recursion of forward pass for the remaining time steps
+    for ii in range(conv_steps+1, T+1):  # t=conv_steps+1 -> t=T
+        e_t[:, ii] = y[:, ii-1] - torch.matmul(G, x_t_tmin1[:, ii])
+        x_t_tmin1[:, ii+1] = torch.matmul(F, x_t_tmin1[:, ii]) + torch.matmul(K_t, e_t[:, ii])
+        logL[ii-1] = -(qlog2pi + log_det_Dt + torch.matmul(
+            torch.matmul(torch.unsqueeze(e_t[:, ii], 0), invD_t),
+            torch.unsqueeze(e_t[:, ii], -1))) / 2
+
+    x_t_tmin1 = x_t_tmin1[:, :-1]  # Remove the extra t=T+1 time point created
+
+    # Kalman smoothing (backward pass)
+    r_t = torch.zeros(p, dtype=dtype).cuda()
+    x_t_n = torch.zeros(p, T+1, dtype=dtype).cuda()  # (index 1 corresponds to t=0, etc.)
+    Ip = torch.eye(p, dtype=dtype).cuda()
+
+    # Run R_t recursion until convergence
+    GD = torch.matmul(G.T, invD_t)
+    R_t = torch.zeros(p, p, dtype=dtype).cuda()  # dlyap is slow on GPU, find convergent R_t empirically
+    GDG = torch.matmul(GD, G)
+
+    for k in range(conv_steps):  # t=T -> t=T-conv_steps+1
+        R_t = GDG + torch.matmul(torch.matmul(L_t.T, R_t), L_t)
+
+    RP = torch.matmul(R_t, P_t_tmin1)
+    P_t_n = torch.matmul(P_t_tmin1, (Ip - RP))
+    P_t_tmin1_n = torch.matmul(
+        torch.matmul((Ip - RP.T), L_t), P_t_tmin1.T)  # derived using Theorem 1 and Lemma 1, m = t, s = t+1
+
+    # Recursion of backward pass: fixed-interval smoothing
+    for ii in range(T, 0, -1):  # t=T -> t=1
+        r_t = torch.matmul(GD, e_t[:, ii]) + torch.matmul(L_t.T, r_t)
+        x_t_n[:, ii] = x_t_tmin1[:, ii] + torch.matmul(P_t_tmin1, r_t)
+
+    x_t_n[:, 0] = x_t_n[:, 1]  # Repeat t=1 to extend smoothed estimates to t=0
+
+    return x_t_n, P_t_n, P_t_tmin1_n, logL, break_conv, K_t, x_t_tmin1, P_t_tmin1
 
 
 def inverse(A, approach='svd'):
@@ -419,7 +593,7 @@ def inverse(A, approach='svd'):
         - 'svd': Singular value decomposition
 
     Authors: Proloy Das <pd640@mgh.harvard.edu>
-             Mingjian He <mh105@mit.edu>
+             Mingjian He <mh1@stanford.edu>
     """
     if np.isinf(A).any():
         return np.zeros(A.shape, dtype=A.dtype)
@@ -441,6 +615,36 @@ def inverse(A, approach='svd'):
         U, S, Vh = np.linalg.svd(A, full_matrices=True)
         S = _reciprocal_pos_vals(S)
         return (Vh.T * S) @ U.T
+
+    else:
+        raise ValueError('Specified matrix inversion approach is not recognized.')
+
+
+def inverse_torch(A, approach='svd'):
+    """
+    Custom inverse function for inverting large covariance matrices with Pytorch
+
+    see function header of inverse() for different approaches
+    """
+    if approach == 'gaussian':  # not recommended
+        return torch.linalg.inv(A)
+
+    elif approach == 'cholesky':  # if on CUDA will use CPU therefore slow
+        L = torch.linalg.cholesky(A, upper=False)
+        Ia = torch.eye(L.shape[0], dtype=L.dtype, device=L.device)
+        L_inv = torch.linalg.solve_triangular(L, Ia, upper=False)
+        return torch.matmul(L_inv.T, L_inv)
+
+    elif approach == 'qr':
+        Q, R = torch.linalg.qr(A, mode='complete')
+        Ir = torch.eye(R.shape[0], dtype=R.dtype, device=R.device)
+        R_inv = torch.linalg.solve_triangular(R, Ir, upper=True)
+        return torch.matmul(R_inv, Q.T)
+
+    elif approach == 'svd':  # if on CUDA will use GPU unless A is complex
+        U, S, Vh = torch.linalg.svd(A, full_matrices=True)
+        S = _reciprocal_pos_vals(S)
+        return torch.matmul(Vh.T * S, U.T)
 
     else:
         raise ValueError('Specified matrix inversion approach is not recognized.')

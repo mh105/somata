@@ -1,25 +1,18 @@
 """
-Author: Mingjian He <mh105@mit.edu>
+Author: Mingjian He <mh1@stanford.edu>
 
 Testing function for loading data in tests/test_*.py
 """
 
 import os
+from importlib.util import find_spec
 from scipy.io.matlab import loadmat
 
 
 def _load_data(filename, return_path=False):
-    """ Load data files for dp functions """
-    try:
-        dir_path = os.path.dirname(os.path.realpath(__file__))
-        if dir_path.find('tests') > 0:
-            test_data_dir = os.path.join(dir_path, '_test_data')
-        else:
-            test_data_dir = os.path.join(dir_path, 'tests/_test_data')
-    except NameError:  # __file__ isn't available for iPython console sessions
-        dir_path = os.getcwd()
-        test_data_dir = os.path.join(dir_path[:dir_path.find('somata') + 6],
-                                     'tests/_test_data')  # assumes the top level repo name is somata
+    """ Load data files for test functions """
+    somata_init_path = find_spec('somata').origin  # find the package root __init__.py filepath
+    test_data_dir = os.path.join(os.path.dirname(os.path.dirname(somata_init_path)), 'tests/_test_data')
     full_fn = os.path.join(test_data_dir, filename)
     if return_path:
         return full_fn

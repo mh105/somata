@@ -1,5 +1,5 @@
 """
-Author: Mingjian He <mh105@mit.edu>
+Author: Mingjian He <mh1@stanford.edu>
 
 Testing functions for switching methods in somata/switching
 """
@@ -50,15 +50,15 @@ def test_vb_learn_original():
     mat_results = _load_data("vb_learn_original_results.mat")
 
     # Verify that the results are close within tolerance
-    assert np.allclose(vb_results['h_t_m'].flatten(), mat_results['Mprob'].flatten()),\
+    assert np.allclose(vb_results['h_t_m'].flatten(), mat_results['Mprob'].flatten()), \
         'Results of h_t_m are different from MATLAB outputs.'
-    assert np.allclose(vb_results['q_t_m'].flatten(), mat_results['fy_t'].flatten()),\
+    assert np.allclose(vb_results['q_t_m'].flatten(), mat_results['fy_t'].flatten()), \
         'Results of q_t_m are different from MATLAB outputs.'
-    assert np.allclose(vb_results['A'].flatten(), mat_results['A'].flatten()),\
+    assert np.allclose(vb_results['A'].flatten(), mat_results['A'].flatten()), \
         'Results of A are different from MATLAB outputs.'
-    assert np.allclose(vb_results['VB_iter'], mat_results['VB_iter'].flatten()),\
+    assert np.allclose(vb_results['VB_iter'], mat_results['VB_iter'].flatten()), \
         'Different numbers of VB iterations were executed from MATLAB outputs.'
-    assert np.allclose(vb_results['logL_bound'], mat_results['logL_bound'].flatten()),\
+    assert np.allclose([x[-1] for x in vb_results['logL_bound']], mat_results['logL_bound'].flatten()), \
         'Results of logL_bound are different from MATLAB outputs.'
 
 
@@ -74,23 +74,24 @@ def test_vb_learn():
     # SOMATA has better estimations of mu0 and Q0, so remove them from EM updates when comparing with MATLAB results
     vb_model = Vbs(o1)
     print(vb_model)
-    vb_results = vb_model.learn(keep_param=('mu0', 'Q0'), shared_R=True, shared_comp=[0, 0], return_dict=True)
+    vb_results = vb_model.learn(keep_param=('mu0', 'Q0'), shared_R=True, shared_comp=[0, 0],
+                                normalize_q_t=True, return_dict=True)
     mat_results = _load_data("vb_learn_results.mat")
 
     # Verify that the results are close within tolerance
-    assert np.allclose(vb_results['h_t_m'].flatten(), mat_results['Mprob'].flatten()),\
+    assert np.allclose(vb_results['h_t_m'].flatten(), mat_results['Mprob'].flatten()), \
         'Results of h_t_m are different from MATLAB outputs.'
-    assert np.allclose(vb_results['h_t_m_soft'].flatten(), mat_results['Mprob_soft'].flatten()),\
+    assert np.allclose(vb_results['h_t_m_soft'].flatten(), mat_results['Mprob_soft'].flatten()), \
         'Results of h_t_m_soft are different from MATLAB outputs.'
-    assert np.allclose(vb_results['h_t_m_hard'].flatten(), mat_results['Mprob_hard'].flatten()),\
+    assert np.allclose(vb_results['h_t_m_hard'].flatten(), mat_results['Mprob_hard'].flatten()), \
         'Results of h_t_m_hard are different from MATLAB outputs.'
-    assert np.allclose(vb_results['q_t_m'].flatten(), mat_results['fy_t'].flatten()),\
+    assert np.allclose(vb_results['q_t_m'].flatten(), mat_results['fy_t'].flatten()), \
         'Results of q_t_m are different from MATLAB outputs.'
-    assert np.allclose(vb_results['A'].flatten(), mat_results['A'].flatten()),\
+    assert np.allclose(vb_results['A'].flatten(), mat_results['A'].flatten()), \
         'Results of A are different from MATLAB outputs.'
-    assert np.allclose(vb_results['VB_iter'], mat_results['VB_iter'].flatten()),\
+    assert np.allclose(vb_results['VB_iter'], mat_results['VB_iter'].flatten()), \
         'Different numbers of VB iterations were executed from MATLAB outputs.'
-    assert np.allclose(vb_results['logL_bound'], mat_results['logL_bound'].flatten()),\
+    assert np.allclose([x[-1] for x in vb_results['logL_bound']], mat_results['logL_bound'].flatten()), \
         'Results of logL_bound are different from MATLAB outputs.'
 
 

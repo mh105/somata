@@ -1,5 +1,5 @@
 """
-Author: Mingjian He <mh105@mit.edu>
+Author: Mingjian He <mh1@stanford.edu>
 
 vb module contains variational bayesian methods for switching inference
 """
@@ -23,6 +23,8 @@ class VBSwitchModel(object):
     h_t_m = None
     q_t_m = None
     logL_bound = None
+    x_t_n_all = None
+    P_t_n_all = None
 
     def __init__(self, ssm_array, y=None):
         """
@@ -101,10 +103,10 @@ class VBSwitchModel(object):
         :param dwell_prob: dwell probability for HMM transitions to initialize A
         :param A: HMM transition matrix, if provided will override dwell_prob
         :param keep_param: a tuple of strings for parameters to keep and not update
-        :param maxE_iter: maximal number of iterations to run for fixed point iteration in E step
+        :param maxE_iter: maximal number of iterations to run for fixed-point iteration in E step
         :param maxVB_iter: maximal number of EM iterations in VB learning
         :param h_t_thresh: threshold below which EM iteration stops
-        :param q_t_thresh: threshold below which E step fixed point iteration stops
+        :param q_t_thresh: threshold below which E step fixed-point iteration stops
         :param shared_R: boolean flag to do joint estimation of observation noise
         :param shared_comp: False to do independent updates, or a tuple of lists of indices for which component
                             in each model to estimate jointly. E.g. ([1,1], [2,3]) will force the 1st component
@@ -114,7 +116,7 @@ class VBSwitchModel(object):
         :param priors_all: a list of lists of dictionaries specifying priors for each component,
                            if 'auto' -> Auto MAP, if None -> MLE
         :param normalize_q_t: whether to normalize interpolated density at the first E-step iteration
-        :param plot_E: boolean flag to plot during fixed point iteration in E step
+        :param plot_E: boolean flag to plot during fixed-point iteration in E step
         :param verbose: boolean flag for printing messages of changes in h_t_m and time taken
         :param return_dict: None -> no return, True -> return dict, False -> return tuple of variables
         :param original: boolean flag to use the original Ghahramani & Hinton algorithm
@@ -149,7 +151,7 @@ class VBSwitchModel(object):
         """ Switching linear segmentation """
         # Provide different segmentation methods (soft, semi-hard (VB h_t_m), hard)
         h_t_m_soft, fy_t = switching(self.ssm_array, method='ab pari', A=self.A)  # soft segmentation
-        _, h_t_m_hard = viterbi(self.A, fy_t)  # apply Viterbi on parallel interpolated density for hard segmentation
+        _, h_t_m_hard = viterbi(self.A, fy_t, ignore_numerr=True)  # apply Viterbi on parallel interpolated density
 
         """ EOF """
         if verbose:
@@ -161,25 +163,27 @@ class VBSwitchModel(object):
             pass
         elif return_dict:
             return {'h_t_m': self.h_t_m, 'h_t_m_soft': h_t_m_soft, 'h_t_m_hard': h_t_m_hard, 'q_t_m': self.q_t_m,
-                    'A': self.A, 'ssm_array': self.ssm_array, 'VB_iter': VB_iter, 'logL_bound': self.logL_bound}
+                    'A': self.A, 'ssm_array': self.ssm_array, 'VB_iter': VB_iter, 'logL_bound': self.logL_bound,
+                    'x_t_n_all': self.x_t_n_all, 'P_t_n_all': self.P_t_n_all}
         else:
-            return self.h_t_m, h_t_m_soft, h_t_m_hard, \
-                   self.q_t_m, self.A, self.ssm_array, VB_iter, self.logL_bound
+            return self.h_t_m, h_t_m_soft, h_t_m_hard, self.q_t_m, \
+                self.A, self.ssm_array, VB_iter, self.logL_bound, self.x_t_n_all, self.P_t_n_all
 
     def e_step(self, y=None, original=False, maxE_iter=100, q_t_thresh=1e-6, normalize_q_t=False, plot_E=False):
         """
         Generalized E step in VB learning, exposed for run_em()
 
         Depending on whether the original algorithm is used, the E step
-        has a different initialization of the fixed point iteration
+        has a different initialization of the fixed-point iteration
         """
         # Save the current h_t_m to update EM stopping variable at the end
         last_h_t_m = self.h_t_m
 
-        # Initialize the fixed point iteration
+        # Initialize the fixed-point iteration
         delta_q_t_m = float('inf')
         self.q_t_m = float('inf')
         E_iter = 0
+        E_logL_bound = []
 
         # Different initialization based on whether the original algorithm is used
         if original:
@@ -213,8 +217,11 @@ class VBSwitchModel(object):
                     # Scale q_t_m by the effective smoothed conditional covariance
                     P_t_n_weights = np.zeros(self.K, dtype=np.float64)
                     for m in range(self.K):
-                        P_t_n_weights[m] = self.ssm_array[m].G @ P_t_n_all[m][:, :, self.T//2] @ self.ssm_array[m].G.T
+                        P_t_n_weights[m] = np.squeeze(
+                            self.ssm_array[m].G @ P_t_n_all[m][:, :, self.T//2] @ self.ssm_array[m].G.T)
                     self.q_t_m = self.q_t_m * (min(P_t_n_weights) / P_t_n_weights)[:, None]
+
+                g_t_m = np.log(self.q_t_m)
             else:
                 # noinspection PyUnboundLocalVariable
                 self.q_t_m, g_t_m = _compute_q_t_m(self.ssm_array, x_t_n_all, P_t_n_all, temperature=temperature)
@@ -227,10 +234,6 @@ class VBSwitchModel(object):
             h_t_tmin1_m = h_t_tmin1_m / temperature
             temperature = temperature / 2 + 0.5  # decreasing towards asymptote at temperature=1
 
-            # Plotting E step for the first two models
-            if plot_E:
-                _plot_e(self.h_t_m, self.q_t_m, E_iter)
-
             # E.3 Run Kalman smoothing recursions with weighted data
             x_t_n_all, P_t_n_all, P_t_tmin1_n_all, logL_all, *_ = \
                 Ssm.par_kalman(self.ssm_array, y=y, method=method, R_weights=1/self.h_t_m)
@@ -239,9 +242,18 @@ class VBSwitchModel(object):
             # Check for convergence using the average change in elements of q_t_m
             delta_q_t_m = np.mean(abs(last_q_t_m - self.q_t_m))
 
+            # Compute the negative variational free energy / lower bound on likelihood / evidence lower bound (ELBO)
+            E_logL_bound.append(_compute_logl_bound(self.ssm_array, logL_HMM, logL_SSM, self.h_t_m, g_t_m))
+
+            # Plotting E step for the first two models
+            _ = _plot_e(self.h_t_m, self.q_t_m, E_iter) if plot_E else None
+
         # Finish the E step
+        self.logL_bound.append(E_logL_bound)
         # noinspection PyUnboundLocalVariable
-        self.logL_bound.append(_compute_logl_bound(self.ssm_array, logL_HMM, logL_SSM, self.h_t_m, g_t_m))
+        self.x_t_n_all = x_t_n_all
+        # noinspection PyUnboundLocalVariable
+        self.P_t_n_all = P_t_n_all
 
         # noinspection PyUnboundLocalVariable
         e_results = {'x_t_n_all': x_t_n_all, 'P_t_n_all': P_t_n_all, 'P_t_tmin1_n_all': P_t_tmin1_n_all,
@@ -264,7 +276,7 @@ class VBSwitchModel(object):
 def _compute_q_t_m(ssm_array, x_t_n_all, P_t_n_all, temperature=1, y=None):
     """
     Compute the un-normalized Gaussian density function
-    of expected error for VB learning fixed point iteration
+    of expected error for VB learning fixed-point iteration
 
     Reference:
         Ghahramani, Z., & Hinton, G. E. (2000). Variational learning
@@ -371,7 +383,7 @@ def _m1(ssm_array, x_t_n_all, P_t_n_all, P_t_tmin1_n_all, h_t_m, y=None, priors_
     # Update F and Q matrices shared across models
     if shared_comp and not ('F' in keep_param and 'Q' in keep_param):
         shared_comp = (shared_comp,) if type(shared_comp) is list else shared_comp
-        assert all([k == K for k in [len(x) for x in shared_comp]]),\
+        assert all([k == K for k in [len(x) for x in shared_comp]]), \
             'Index of component shared is not specified for all models. Use index=None if a model does not share.'
 
         for j in range(len(shared_comp)):  # iterate through each independent component that is shared
@@ -419,7 +431,7 @@ def _m1(ssm_array, x_t_n_all, P_t_n_all, P_t_tmin1_n_all, h_t_m, y=None, priors_
             comp = ssm_array[first_model_index].components[shared_comp_indices[first_model_index]]
             if 'F' not in keep_param:
                 # noinspection PyProtectedMember
-                F = comp._m_update_f(A=A_tmp, B=B_tmp, C=C_tmp, priors=comp_priors)
+                F = comp._m_update_f(A=A_tmp, B=B_tmp, priors=comp_priors)
             else:
                 # assume that all models already have the same F entries for the shared component
                 start_idx, end_idx = update_index_store[first_model_index]
@@ -458,6 +470,7 @@ def _plot_e(h_t_m, q_t_m, E_iter):
     import matplotlib.pyplot as plt
 
     plt.subplots_adjust(hspace=0.5)
+    fig = plt.figure()
     ax1 = plt.subplot(2, 1, 1)
     ax1.clear()
     ax1.plot(h_t_m[0, :])
@@ -472,4 +485,4 @@ def _plot_e(h_t_m, q_t_m, E_iter):
     ax2.set_title('q_t_m: iter ' + str(E_iter))
 
     plt.pause(0.05)
-    plt.show()
+    return fig

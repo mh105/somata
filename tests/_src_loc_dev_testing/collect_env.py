@@ -80,6 +80,7 @@ def run_and_parse_first_match(run_lambda, command, regex):
         return None
     return match.group(1)
 
+
 def run_and_return_first_line(run_lambda, command):
     """Runs command using run_lambda and returns first line if output is not empty"""
     rc, out, _ = run_lambda(command)
@@ -112,8 +113,10 @@ def get_conda_packages(run_lambda):
         )
     )
 
+
 def get_gcc_version(run_lambda):
     return run_and_parse_first_match(run_lambda, 'gcc --version', r'gcc (.*)')
+
 
 def get_clang_version(run_lambda):
     return run_and_parse_first_match(run_lambda, 'clang --version', r'clang version (.*)')
@@ -133,7 +136,8 @@ def get_nvidia_driver_version(run_lambda):
 
 
 def get_gpu_info(run_lambda):
-    if get_platform() == 'darwin' or (TORCH_AVAILABLE and hasattr(torch.version, 'hip') and torch.version.hip is not None):
+    if get_platform() == 'darwin' or (TORCH_AVAILABLE
+                                      and hasattr(torch.version, 'hip') and torch.version.hip is not None):
         if TORCH_AVAILABLE and torch.cuda.is_available():
             return torch.cuda.get_device_name(None)
         return None
@@ -168,9 +172,9 @@ def get_cudnn_version(run_lambda):
     rc, out, _ = run_lambda(cudnn_cmd)
     # find will return 1 if there are permission errors or if not found
     if len(out) == 0 or (rc != 1 and rc != 0):
-        l = os.environ.get('CUDNN_LIBRARY')
-        if l is not None and os.path.isfile(l):
-            return os.path.realpath(l)
+        ll = os.environ.get('CUDNN_LIBRARY')
+        if ll is not None and os.path.isfile(ll):
+            return os.path.realpath(ll)
         return None
     files_set = set()
     for fn in out.split('\n'):
@@ -325,6 +329,7 @@ def is_xnnpack_available():
     else:
         return "N/A"
 
+
 def get_env_info():
     run_lambda = run
     pip_version, pip_list_output = get_pip_packages(run_lambda)
@@ -374,6 +379,7 @@ def get_env_info():
         caching_allocator_config=get_cachingallocator_config(),
         is_xnnpack_available=is_xnnpack_available(),
     )
+
 
 env_info_fmt = """
 PyTorch version: {torch_version}
@@ -498,7 +504,6 @@ def main():
             msg = "\n*** Detected a minidump at {} created on {}, ".format(latest, creation_time) + \
                   "if this is related to your bug please include it when you file a report ***"
             print(msg, file=sys.stderr)
-
 
 
 if __name__ == '__main__':

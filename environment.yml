@@ -2,19 +2,23 @@
 # usage: $ mamba env create -f environment.yml
 name: somata
 channels:
+  - pytorch
   - conda-forge
 dependencies:
-  - numpy>=1.23
+  - numpy
+  - pytorch
   - codetiming
   - colorcet
   - ipdb
   - joblib
   - kneed
   - matplotlib
+  - mne
   - pip
   - pytest
   - python
   - scipy
   - setuptools
-  - spectrum
   - tqdm
+  - pip:
+    - spectrum

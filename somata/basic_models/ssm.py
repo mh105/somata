@@ -1,5 +1,5 @@
 """
-Author: Mingjian He <mh105@mit.edu>
+Author: Mingjian He <mh1@stanford.edu>
 
 ssm module contains a general state-space model class used in SOMATA
 """
@@ -194,6 +194,10 @@ class StateSpaceModel(object):
             if self.components is not None:
                 assert self.nstate == sum([x.default_G.shape[1] for x in self.components]), \
                     'Input components give a different state dimension from that of other attributes.'
+                assert self.ncomp == len(self.components), 'Numbers of components are inconsistent.'
+                self.comp_nstates = [x.default_G.shape[1] for x in self.components]
+            else:
+                self.comp_nstates = [0]
 
             if self.G is not None:
                 if self.nchannel > 0:
@@ -221,7 +225,7 @@ class StateSpaceModel(object):
             self.nmodel = 1
         else:
             assert len(model_stack) == 1, 'More than one model stack numbers. Invoke __mul__ if trying to permute.'
-            self.nmodel = int(model_stack)
+            self.nmodel = int(model_stack[0])
 
     def _check_observed_data(self, other):
         """ Used to check if two objects have the same observed data """
@@ -337,6 +341,8 @@ class StateSpaceModel(object):
     def _auto_populate_components(self, type_str):
         """ Auto-populate components with a given type of components """
         assert isinstance(type_str, str), 'components should be a string in this method.'
+        self._check_dimensions((0,))  # fill in the nstate attribute
+
         if type_str == 'Osc':  # auto-populate with oscillator components
             self._auto_populate_osc_components()
         elif type_str == 'Arn':
@@ -346,6 +352,8 @@ class StateSpaceModel(object):
         else:
             raise ValueError('Specified component type is not valid.')
 
+        self._check_dimensions((2,))  # fill in the comp_nstates attribute
+
     def _auto_populate_osc_components(self):
         """ Initialize all components to be Matsuda oscillators during constructor """
         try:  # this has to stay here to avoid circular import before class definitions
@@ -353,15 +361,12 @@ class StateSpaceModel(object):
         except (ImportError, ModuleNotFoundError):
             from osc import OscillatorModel
 
-        self._check_dimensions((0,))  # fill in the nstate attribute
         assert (self.nstate % 2) == 0, 'Cannot default to Osc components with odd nstate.'
         self.ncomp = self.nstate // 2
         if self.ncomp > 0:
             self.components = [OscillatorModel() for _ in range(self.ncomp)]
-            self.comp_nstates = [x.default_G.shape[1] for x in self.components]
         else:
             self.components = None
-            self.comp_nstates = [0]
 
     def _auto_populate_arn_components(self):
         """ Initialize all components to be autoregressive models during constructor """
@@ -373,26 +378,25 @@ class StateSpaceModel(object):
         # F and Q parameters must be specified
         assert self.F is not None, 'F parameter is not available to form Arn components.'
         assert self.Q is not None, 'Q parameter is not available to form Arn components.'
-        assert np.all(self.Q(~np.eye(self.Q.shape[0], dtype=bool)) == 0),\
+        assert np.all(self.Q[~np.eye(self.Q.shape[0], dtype=bool)] == 0), \
             'Found non-zero non-diagonal elements when trying to auto-populate Arn components.'
 
         # Guess how many Arn components are contained in the model parameters
         Q_diag = np.diag(self.Q)
-        self.comp_nstates = np.diff(np.append(np.nonzero(Q_diag), len(Q_diag)))
-        self.ncomp = len(self.comp_nstates)
+        comp_nstates = np.diff(np.append(np.nonzero(Q_diag), len(Q_diag)))
+        assert sum(comp_nstates) == self.nstate, 'Arn components do not have the correct total number of states.'
+        self.ncomp = len(comp_nstates)
 
         # Create the autoregressive model components
-        comp_list = []
-        for n in range(len(self.comp_nstates)):
-            start_idx = sum(self.comp_nstates[:n])
-            end_idx = sum(self.comp_nstates[:n+1])
+        self.components = []
+        for n in range(len(comp_nstates)):
+            start_idx = sum(comp_nstates[:n])
+            end_idx = sum(comp_nstates[:n+1])
             coeff = self.F[start_idx, start_idx:end_idx]
             sigma2 = self.Q[start_idx, start_idx]
             mu0 = self.mu0[start_idx:end_idx] if self.mu0 is not None else None
             Q0 = self.Q[start_idx, start_idx] if self.Q0 is not None else None
-            comp_list.append(AutoRegModel(coeff=coeff, sigma2=sigma2, mu0=mu0, Q0=Q0))
-
-        self.components = comp_list
+            self.components.append(AutoRegModel(coeff=coeff, sigma2=sigma2, mu0=mu0, Q0=Q0))
 
     def _auto_populate_gen_components(self):
         """ Initialize with a single general state-space model during constructor """
@@ -401,9 +405,13 @@ class StateSpaceModel(object):
         except (ImportError, ModuleNotFoundError):
             from gen import GeneralSSModel
 
-        self.ncomp = 1
-        self.components = [GeneralSSModel(F=self.F, Q=self.Q, mu0=self.mu0, Q0=self.Q0)]
-        self.comp_nstates = [self.components[0].nstate]
+        if self.nstate > 0:
+            self.ncomp = 1
+            self.components = [GeneralSSModel()]
+            self.components[0].default_G = np.ones((1, self.nstate), dtype=np.float64)
+        else:
+            self.ncomp = 0
+            self.components = None
 
     def _initialize_from_components(self, components):
         """ Initialize the StateSpaceModel instance from given components during constructor """
@@ -539,13 +547,13 @@ class StateSpaceModel(object):
         else:
             R = self._return_not_none(self.R, other.R)
 
-        # Set up the new components attribute to maintain memory addresses
+        # Set up the new components attribute without maintaining memory addresses using deepcopy()
         new_comp = [None] * (self.ncomp + other.ncomp)
         if len(new_comp) == 0 or skip_components:
             new_comp = None
         else:
-            new_comp[:self.ncomp] = [None] * self.ncomp if self.components is None else self.components
-            new_comp[self.ncomp:] = [None] * other.ncomp if other.components is None else other.components
+            new_comp[:self.ncomp] = [None] * self.ncomp if self.components is None else deepcopy(self.components)
+            new_comp[self.ncomp:] = [None] * other.ncomp if other.components is None else deepcopy(other.components)
 
         # Configure the rest of attributes that are immutable
         # F
@@ -596,7 +604,7 @@ class StateSpaceModel(object):
         """ Remove a component from the Ssm object """
         start_idx = sum(self.comp_nstates[:comp_idx])
         end_idx = sum(self.comp_nstates[:comp_idx+1])
-        slice_idx = np.s_[start_idx:end_idx]
+        slice_idx = range(start_idx, end_idx)
         self.nstate -= self.comp_nstates[comp_idx]
         self.ncomp -= 1
         _ = self.comp_nstates.pop(comp_idx)
@@ -642,6 +650,7 @@ class StateSpaceModel(object):
 
             # Provide an empty component in the components attribute
             setattr(current_component, 'components', [deepcopy(empty_comp)])
+            current_component.ncomp = 1
             current_component.components[0].default_G = current_component.default_G
 
             if getattr(self, 'F') is not None:
@@ -684,10 +693,12 @@ class StateSpaceModel(object):
             setattr(current_component, 'y', getattr(self, 'y'))  # point to the same memory address
             setattr(current_component, 'Fs', getattr(self, 'Fs'))  # Fs should have immutable datatype
 
-            # Use inherited check methods in component subclasses to update dimension attributes
+            # Use check methods in component subclasses to update dimension attributes
             current_component._check_dimensions()
             current_component._check_model_stack()
-            current_component.ncomp = 1
+
+            # Update component parameters
+            current_component.update_comp_param()
 
         return components_prefill
 
@@ -915,7 +926,7 @@ class StateSpaceModel(object):
         y = self.y if y is None else y
         if priors is None:
             priors = [None] * self.ncomp
-        elif type(priors) == dict:
+        elif type(priors) is dict:
             priors = [priors]  # so that it can be indexed to position 0
 
         # Attempt to skip sums of squares computation
@@ -946,7 +957,7 @@ class StateSpaceModel(object):
                 # Call the _m_update_<param> methods specific to the component subclass
                 if 'F' in update_param and 'F' not in keep_param:
                     self.F[start_idx:end_idx, start_idx:end_idx] = \
-                        current_component._m_update_f(A=A_tmp, B=B_tmp, C=C_tmp, priors=priors[ii])
+                        current_component._m_update_f(A=A_tmp, B=B_tmp, priors=priors[ii])
 
                 if 'Q' in update_param and 'Q' not in keep_param:
                     self.Q[start_idx:end_idx, start_idx:end_idx] = \
@@ -986,7 +997,7 @@ class StateSpaceModel(object):
 
     def update_comp_param(self):
         """ Update component specific parameters, override in subclasses """
-        return
+        pass
 
     def e_step(self, y=None, logL_list=None, **kwargs):
         """ Exposed E step method for run_em() """
@@ -1062,7 +1073,7 @@ class StateSpaceModel(object):
 
     # noinspection PyUnusedLocal
     @staticmethod
-    def _m_update_f(A=None, B=None, C=None, priors=None):
+    def _m_update_f(A=None, B=None, priors=None):
         pass
 
     # noinspection PyUnusedLocal
@@ -1070,10 +1081,25 @@ class StateSpaceModel(object):
     def _m_update_q(A=None, B=None, C=None, T=None, F=None, priors=None):
         pass
 
+    # noinspection PyUnusedLocal
+    @staticmethod
+    def _m_update_q_src(Q_ss=None, T=None, Q_basis=None, nsource=None, nstate=None, priors=None):
+        pass
+
     @staticmethod
     def _m_update_mu0(x_0_n=None):
         """ Update initial state mean -- mu0 """
         mu0 = x_0_n[:, None].copy()
+        return mu0
+
+    @staticmethod
+    def _m_update_mu0_src(x_0_n=None, nstate=None):
+        """
+        Update initial state mean mu0 in dynamic
+        source localization
+        """
+        assert x_0_n.shape[0] % nstate == 0, 'Input x_t_n is not a multiple of nstate.'
+        mu0 = x_0_n[:, None].clone()
         return mu0
 
     @staticmethod
