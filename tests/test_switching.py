@@ -5,7 +5,7 @@ Testing functions for switching methods in somata/switching
 """
 
 import numpy as np
-from test_load_data import _load_data
+from test_load_data import _load_data  # type: ignore
 
 
 def test_switching():
@@ -43,10 +43,10 @@ def test_vb_learn_original():
     o1 = Osc(**input_data, G=([1, 0, 1, 0], [1, 0, 0, 0]), Fs=100)
     print(o1)
 
-    # SOMATA has better estimations of mu0 and Q0, so remove them from EM updates when comparing with MATLAB results
+    # SOMATA has better estimations of mu0 and S0, so remove them from EM updates when comparing with MATLAB results
     vb_model = Vbs(o1)
     print(vb_model)
-    vb_results = vb_model.learn(keep_param=('mu0', 'Q0'), return_dict=True, original=True)
+    vb_results = vb_model.learn(keep_param=('mu0', 'S0'), return_dict=True, original=True)
     mat_results = _load_data("vb_learn_original_results.mat")
 
     # Verify that the results are close within tolerance
@@ -71,10 +71,10 @@ def test_vb_learn():
     o1 = Osc(**input_data, G=([1, 0, 1, 0], [1, 0, 0, 0]), Fs=100)
     print(o1)
 
-    # SOMATA has better estimations of mu0 and Q0, so remove them from EM updates when comparing with MATLAB results
+    # SOMATA has better estimations of mu0 and S0, so remove them from EM updates when comparing with MATLAB results
     vb_model = Vbs(o1)
     print(vb_model)
-    vb_results = vb_model.learn(keep_param=('mu0', 'Q0'), shared_R=True, shared_comp=[0, 0],
+    vb_results = vb_model.learn(keep_param=('mu0', 'S0'), shared_R=True, shared_comp=[0, 0],
                                 normalize_q_t=True, return_dict=True)
     mat_results = _load_data("vb_learn_results.mat")
 

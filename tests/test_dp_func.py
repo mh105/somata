@@ -6,7 +6,7 @@ Testing functions for exact inference signal processing methods in somata/exact_
 
 import numpy as np
 from codetiming import Timer
-from test_load_data import _load_data
+from test_load_data import _load_data  # type: ignore
 
 
 def test_forward_backward(show_plot=False):
@@ -241,6 +241,51 @@ def test_inverse_torch(dim=128, atol=1e-3):
     assert A.dtype == inverse_torch(A, approach='svd').dtype, 'SVD inversion changed the dtype.'
 
 
+def test_logdet():
+    from somata.exact_inference import logdet
+
+    np.random.seed(1)
+
+    for ii in range(8):
+        dim = 2 ** ii
+
+        # Test with a symmetric positive semi-definite matrix
+        A = np.random.rand(dim, dim)
+        A = A @ A.T
+        assert np.allclose(np.log(np.linalg.det(A)), logdet(A)
+                           ), 'Log determinant results are off for positive semi-definite matrices.'
+
+        # Test with a diagonal matrix
+        A = np.eye(dim) * np.random.rand(dim)
+        assert np.allclose(np.log(np.linalg.det(A)), logdet(A)
+                           ), 'Log determinant results are off for diagonal matrices.'
+
+
+def test_logdet_torch(rtol=1e-3, atol=1e-3):
+    from somata.exact_inference import logdet_torch
+    import torch
+
+    np.random.seed(1)
+
+    for ii in range(8):
+        dim = 2 ** ii
+
+        # Test with a symmetric positive semi-definite matrix
+        A = np.random.rand(dim, dim)
+        A = A @ A.T
+        numpy_logdet = np.log(np.linalg.det(A))
+        A = torch.as_tensor(data=A, dtype=torch.float32)
+        assert np.allclose(numpy_logdet, logdet_torch(A).cpu().numpy(),
+                           rtol=rtol, atol=atol), 'Log determinant results are off for positive semi-definite matrices.'
+
+        # Test with a diagonal matrix
+        A = np.eye(dim) * np.random.rand(dim)
+        numpy_logdet = np.log(np.linalg.det(A))
+        A = torch.as_tensor(data=A, dtype=torch.float32)
+        assert np.allclose(numpy_logdet, logdet_torch(A).cpu().numpy(),
+                           rtol=rtol, atol=atol), 'Log determinant results are off for diagonal matrices.'
+
+
 if __name__ == "__main__":
     test_forward_backward()
     test_viterbi()
@@ -248,4 +293,6 @@ if __name__ == "__main__":
     test_djkalman()
     test_inverse()
     test_inverse_torch()
+    test_logdet()
+    test_logdet_torch()
     print('DP function tests finished without exception.')

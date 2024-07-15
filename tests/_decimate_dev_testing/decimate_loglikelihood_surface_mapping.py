@@ -19,14 +19,14 @@ a = np.exp(-alpha / Fs)
 f = 1  # (Hz) center frequency of oscillation in Hertz
 Q = 1  # (Am^2) state noise covariance for the active oscillator only
 mu0 = [0, 0]  # (Am) initial state mean for the active oscillator only
-Q0 = Q  # (Am^2) initial state variance for the active oscillator only
+S0 = Q  # (Am^2) initial state variance for the active oscillator only
 R = 1  # (V^2) observation noise variance, assuming diagonal covariance matrix with the same noise for each channel
 
 neeg = 1
 ntime = int(T * Fs) + 1
 
 # Simulate the hidden state oscillator activity
-sim_x = simulate_oscillation(f, a, Q, mu0, Q0, Fs, T)
+sim_x = simulate_oscillation(f, a, Q, mu0, S0, Fs, T)
 
 # Add observation noise
 sim_y = sim_x + np.random.multivariate_normal(np.zeros(neeg), R * np.eye(neeg, neeg), ntime)[:, 0]

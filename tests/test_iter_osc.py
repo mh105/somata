@@ -1,7 +1,13 @@
+"""
+Author: Mingjian He <mh1@stanford.edu>
+
+Testing functions for the iOsc algorithm in somata/oscillator_search/iter_osc.py
+"""
+
 from somata.oscillator_search import IterativeOscillatorModel as IterOsc
 from somata.oscillator_search.helper_functions import (
     random, np, simulate_matsuda, sim_to_osc_object, innovations_wrapper)
-from test_load_data import _load_data
+from test_load_data import _load_data  # type: ignore
 import pickle
 
 

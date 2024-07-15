@@ -2,7 +2,7 @@
 """ Demo of SOMATA (basic_models) """
 
 # noinspection PyProtectedMember
-from tests.test_load_data import _load_data
+from tests.test_load_data import _load_data, get_test_path
 from somata.basic_models import StateSpaceModel as Ssm
 from somata.basic_models import GeneralSSModel as Gen
 from somata.basic_models import OscillatorModel as Osc
@@ -137,8 +137,7 @@ priors = o1.initialize_priors()
 priors
 o1.m_estimate(**o1.dejong_filt_smooth(EM=True), priors=priors)
 _ = [o1.m_estimate(**o1.dejong_filt_smooth(EM=True),
-                   priors=priors)
-     for x in range(50)]
+                   priors=priors) for x in range(50)]
 print(o1)
 #
 #
@@ -198,4 +197,4 @@ a1.append(a2)
 print(a1)
 
 # Lastly, test functions are important
-exec(open('tests/test_basic_models.py').read())
+print(open(get_test_path() / 'test_basic_models.py').read())

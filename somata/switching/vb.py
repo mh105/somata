@@ -78,6 +78,10 @@ class VBSwitchModel(object):
                     using Baum-Welch update equations.
 
         Reference:
+            He, M., Das, P., Hotan, G., & Purdon, P. L. (2023). Switching
+            state-space modeling of neural signal dynamics. PLoS
+            Computational Biology, 19(8), e1011395.
+
             Ghahramani, Z., & Hinton, G. E. (2000). Variational learning
             for switching state-space models. Neural computation, 12(4),
             831-864.
@@ -121,6 +125,19 @@ class VBSwitchModel(object):
         :param return_dict: None -> no return, True -> return dict, False -> return tuple of variables
         :param original: boolean flag to use the original Ghahramani & Hinton algorithm
         :param show_pbar: show progress bar during EM iterations
+
+        Outputs:
+        :returns: a dictionary or tuple of variables depending on return_dict
+            - h_t_m: a 2D array of model responsibilities for each model at each time point
+            - h_t_m_soft: a 2D array of soft segmentations for each model at each time point
+            - h_t_m_hard: a 2D array of hard segmentations for each model at each time point
+            - q_t_m: a 2D array of emission probability densities for each model at each time point
+            - A: HMM transition matrix
+            - ssm_array: an array of Ssm class objects
+            - VB_iter: number of EM iterations
+            - logL_bound: a list of lower bounds on log likelihood
+            - x_t_n_all: a list of smoothed estimates (posterior) of state mean
+            - P_t_n_all: a list of smoothed estimates (posterior) of state conditional covariance
         """
         t = Timer(name="time taken", text="{name}: {seconds:.2f} seconds")
         t.start()
@@ -382,7 +399,7 @@ def _m1(ssm_array, x_t_n_all, P_t_n_all, P_t_tmin1_n_all, h_t_m, y=None, priors_
 
     # Update F and Q matrices shared across models
     if shared_comp and not ('F' in keep_param and 'Q' in keep_param):
-        shared_comp = (shared_comp,) if type(shared_comp) is list else shared_comp
+        shared_comp = (shared_comp,) if not isinstance(shared_comp, tuple) else shared_comp
         assert all([k == K for k in [len(x) for x in shared_comp]]), \
             'Index of component shared is not specified for all models. Use index=None if a model does not share.'
 

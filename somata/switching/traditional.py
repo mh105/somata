@@ -48,6 +48,11 @@ def switching(ssm_array, y=None, method='static', dwell_prob=0.99, A=None,
                        and smoothed model probabilities. None -> no additional processing,
                        'a' -> filtering, 'ab' -> smoothing. Parallel methods will set the
                        option automatically depending on what version is specified.
+
+    Outputs:
+    :returns:
+        - Mprob: posterior model probabilities
+        - fy_t: conditional density of y given t=1...t-1
     """
     ssm_array, K, T = Ssm.setup_array(ssm_array, y=y)
 
@@ -197,7 +202,7 @@ def _gpb1(ssm_array, K, T, A, y=None):
 
     # Initialize P_0_0
     for m in range(K):
-        P_t_t[:, :, 0] += (ssm_array[m].Q0 +
+        P_t_t[:, :, 0] += (ssm_array[m].S0 +
                            (ssm_array[m].mu0 - x_t_t[:, 0][:, None]) @
                            (ssm_array[m].mu0 - x_t_t[:, 0][:, None]).T) * Mprob[m, 0]
 
@@ -306,7 +311,7 @@ def _gpb2(ssm_array, K, T, A, y=None):
     # Initialize x_0_0 and P_0_0
     for m in range(K):
         x_t_t[:, m, 0] = ssm_array[m].mu0[:, 0]
-        P_t_t[:, :, m, 0] = ssm_array[m].Q0
+        P_t_t[:, :, m, 0] = ssm_array[m].S0
 
     # Initialize log likelihood of filtering for each model
     logL = np.zeros(K, dtype=np.float64)
@@ -419,7 +424,7 @@ def _imm(ssm_array, K, T, A, y=None):
     # Initialize x_0_0 and P_0_0
     for m in range(K):
         x_t_t[:, m, 0] = ssm_array[m].mu0[:, 0]
-        P_t_t[:, :, m, 0] = ssm_array[m].Q0
+        P_t_t[:, :, m, 0] = ssm_array[m].S0
 
     # Initialize log likelihood of filtering for each model
     logL = np.zeros(K, dtype=np.float64)
@@ -508,7 +513,7 @@ def _1991(ssm_array, K, T, A, y=None, future_steps=0):
         assert (first_ssm.F == ssm_array[m].F).all(), 'Models have different F matrices.'
         assert (first_ssm.Q == ssm_array[m].Q).all(), 'Models have different Q matrices.'
         assert (first_ssm.mu0 == ssm_array[m].mu0).all(), 'Models have different mu0 vectors.'
-        assert (first_ssm.Q0 == ssm_array[m].Q0).all(), 'Models have different Q0 matrices.'
+        assert (first_ssm.S0 == ssm_array[m].S0).all(), 'Models have different S0 matrices.'
         assert (first_ssm.R == ssm_array[m].R).all(), 'Models have different R matrices.'
         assert first_ssm.mu0.shape[0] == ssm_array[m].G.shape[1], 'Model hidden state dimensions are inconsistent.'
 
@@ -533,7 +538,7 @@ def _1991(ssm_array, K, T, A, y=None, future_steps=0):
 
     # Initialize hidden states at t=0
     x_t_t[:, 0] = first_ssm.mu0[:, 0]  # x_0_0
-    P_t_t[:, :, 0] = first_ssm.Q0  # P_0_0
+    P_t_t[:, :, 0] = first_ssm.S0  # P_0_0
 
     # Initialize log likelihood of filtering for each model
     logL = np.zeros(K, dtype=np.float64)
@@ -618,6 +623,11 @@ def _parallel(ssm_array, K, T, A, method, fix_prior=False, mimic1991=False):
     alpha-beta forward backward algorithm on a discrete
     state Markov Chain (hidden Markov model) that
     captures the switching state variable.
+
+    Reference:
+        He, M., Das, P., Hotan, G., & Purdon, P. L. (2023). Switching
+        state-space modeling of neural signal dynamics. PLoS
+        Computational Biology, 19(8), e1011395.
 
     The key assumption here is that after running
     Kalman filtering and smoothing of the parallel

@@ -19,23 +19,24 @@ class GeneralSSModel(Ssm):
     type = 'gen'
     default_G = None
 
-    def __init__(self, components='Gen', F=None, Q=None, mu0=None, Q0=None, G=None, R=None, y=None, Fs=None):
+    def __init__(self, components='Gen', F=None, Q=None, mu0=None, S0=None, G=None, R=None, y=None, Fs=None):
         """
         Constructor method for GeneralSSModel class
         :param components: add a single component or None
         :param F: transition matrix
         :param Q: state noise covariance matrix
         :param mu0: initial state mean vector
-        :param Q0: initial state covariance matrix
+        :param S0: initial state covariance matrix
         :param G: observation matrix (row major)
         :param R: observation noise covariance matrix
         :param y: observed data (row major, can be multivariate)
         :param Fs: sampling frequency in Hz
         """
         # Call parent class constructor
-        super().__init__(components=components, F=F, Q=Q, mu0=mu0, Q0=Q0, G=G, R=R, y=y, Fs=Fs)
+        super().__init__(components=components, F=F, Q=Q, mu0=mu0, S0=S0, G=G, R=R, y=y, Fs=Fs)
         self.default_G = np.ones((1, self.nstate), dtype=np.float64)
 
+    # Dunder methods - magic methods
     def __repr__(self):
         """ Unambiguous and concise representation when calling GeneralSSModel() """
         return super().__repr__().replace('Ssm', 'Gen')
@@ -45,31 +46,50 @@ class GeneralSSModel(Ssm):
         print_str = super().__str__().replace('<Ssm object at', '<Gen object at')
         return print_str
 
+    # Syntactic sugar methods - useful methods to make manipulations easier
+    def concat_(self, other, skip_components=False):
+        """
+        Join two GeneralSSModel objects together by concatenating the
+        components.
+        """
+        assert self.type == 'gen', 'self in concat_() needs to be of GeneralSSModel class.'
+
+        if other.type == self.type:  # concatenation within GeneralSSModel class
+            # Call parent class method to obtain general concatenated attributes
+            temp_obj = super().concat_(other, skip_components=skip_components)
+            new_obj = GeneralSSModel(components=temp_obj.components, F=temp_obj.F, Q=temp_obj.Q,
+                                     mu0=temp_obj.mu0, S0=temp_obj.S0,
+                                     G=temp_obj.G, R=temp_obj.R, y=temp_obj.y, Fs=temp_obj.Fs)
+
+        else:  # concatenation with other classes of SOMATA basic models
+            new_obj = super().concat_(other, skip_components=skip_components)
+
+        return new_obj
+
     def get_default_q(self, components=None, E=None):
         """
         Get the default structure of state noise covariance
         matrix Q in the Q_basis block diagonal form
         """
         components = self.components if components is None else components
-        if type(components) is not GeneralSSModel:
-            assert len(components) == 1, 'More than one component for GeneralSSModel object is not permitted.'
-            components = components[0]
-            assert type(components) is GeneralSSModel, 'components type is not GeneralSSModel.'
+        assert len(components) == 1, 'More than one component for GeneralSSModel class is not permitted.'
+        first_component = components[0]
+        assert isinstance(first_component, GeneralSSModel), 'The only component type is not GeneralSSModel.'
 
-        order = components.default_G.shape[1]
+        order = first_component.default_G.shape[1]
         E = np.eye(1, dtype=np.float64) if E is None else E
         default_Q = block_diag(*[E] * order)
         return default_Q
 
     def fill_components(self, empty_comp=None, deep_copy=True):
         """ Fill the components attribute with GeneralSSModel parameters """
-        empty_comp = GeneralSSModel() if empty_comp is None else empty_comp
+        empty_comp = empty_comp or GeneralSSModel()
         return super().fill_components(empty_comp=empty_comp, deep_copy=deep_copy)
 
     # Parameter estimation methods (M step)
     def initialize_priors(self, R_sigma2=None, R_hyperparameter=None):
         """ Initialize priors for general state-space component """
-        assert self.ncomp <= 1, 'GeneralSSModel object should not have components.'
+        assert self.ncomp <= 1, 'GeneralSSModel object should not have multiple components.'
 
         # [Inverse gamma prior] on observation noise variance R <--- TODO: update to Wishart
         if R_sigma2 is None:
@@ -109,7 +129,7 @@ class GeneralSSModel(Ssm):
                                                   + str(nstate) + ' states across ' + str(nsource) + ' sources.'
 
         # GeneralSSModel has a full matrix of sum of squares
-        if type(Q_basis) is list:  # using non-orthonormal kernel
+        if isinstance(Q_basis, list):  # using non-orthonormal kernel
             Theta = Src.update_theta(Q_ss=Q_ss, T=T, Q_basis=Q_basis[1],
                                      nsource=nsource, npart=1, priors=priors)
             Q_new = Q_basis[0] @ torch.diag(Theta) @ Q_basis[0].T

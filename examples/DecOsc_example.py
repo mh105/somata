@@ -8,7 +8,7 @@ osc2 = {'a': 0.95, 'q': 0.2, 'f': 10}  # set simulating parameters for alpha osc
 y, param_list, ob_noise = simulate_matsuda([osc1, osc2], R=1.2, Fs=fs, T=10)
 sim_osc0, sim_x0 = sim_to_osc_object(y, param_list)  # save simulations as Osc object to pass into plotting functions
 
-# Initialize Iterative Oscillator object
+# Initialize Decomposed Oscillator object
 do1 = DecOsc(y, fs, noise_start=None, osc_range=7)
 # noise_start determines the frequency above which is used to estimate the observation noise; default: Nyquist - 20 Hz
 # osc_range is maximum number of total oscillators, set to default

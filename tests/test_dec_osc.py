@@ -1,7 +1,13 @@
+"""
+Author: Mingjian He <mh1@stanford.edu>
+
+Testing functions for the dOsc algorithm in somata/oscillator_search/decomp_osc.py
+"""
+
 from somata.oscillator_search import DecomposedOscillatorModel as DecOsc
 from somata.oscillator_search.helper_functions import (
     random, np, simulate_matsuda, sim_to_osc_object)
-from test_load_data import _load_data
+from test_load_data import _load_data  # type: ignore
 import pickle
 
 

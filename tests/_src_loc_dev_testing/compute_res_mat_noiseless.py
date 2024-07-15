@@ -35,7 +35,7 @@ a = 0.98  # (unitless) damping factor, only relevant if using Matsuda oscillator
 f = 10  # (Hz) center frequency of oscillation in Hertz
 Q = 0  # (Am^2) state noise covariance for the active oscillator only
 mu0 = [0, 0]  # (Am) initial state mean for the active oscillator only
-Q0 = Q  # (Am^2) initial state variance for the active oscillator only
+S0 = Q  # (Am^2) initial state variance for the active oscillator only
 R = 0  # (V^2) observation noise variance, assuming diagonal covariance matrix with the same noise for each channel
 
 # Assume a noiseless background of source activity for resolution matrix calculation
@@ -53,7 +53,7 @@ for vidx in range(nsources):  # Note vidx is a single source/vertex
         print('vertex' + str(vidx))
 
         # Simulate the source activity in a single source point
-        simulated_src = simulate_oscillation(f, a, Q, mu0, Q0, Fs, T, oscillation_type=simulation_mode)
+        simulated_src = simulate_oscillation(f, a, Q, mu0, S0, Fs, T, oscillation_type=simulation_mode)
 
         # Place simulated_src in the correct row of x that correspond to the activated source/vertex index
         x = np.copy(x_blank)
@@ -102,7 +102,7 @@ while len(rerun_vidx) > 0:
             print('vertex' + str(vidx))
 
             # Simulate the source activity in a single source point
-            simulated_src = simulate_oscillation(f, a, Q, mu0, Q0, Fs, T, oscillation_type=simulation_mode)
+            simulated_src = simulate_oscillation(f, a, Q, mu0, S0, Fs, T, oscillation_type=simulation_mode)
 
             # Place simulated_src in the correct row of x that correspond to the activated source/vertex index
             x = np.copy(x_blank)
@@ -165,7 +165,7 @@ while len(rerun_vidx) > 0:
             print('vertex' + str(vidx))
 
             # Simulate the source activity in a single source point
-            simulated_src = simulate_oscillation(f, a, Q, mu0, Q0, Fs, T, oscillation_type=simulation_mode)
+            simulated_src = simulate_oscillation(f, a, Q, mu0, S0, Fs, T, oscillation_type=simulation_mode)
 
             # Place simulated_src in the correct row of x that correspond to the activated source/vertex index
             x = np.copy(x_blank)

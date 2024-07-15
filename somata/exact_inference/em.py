@@ -35,8 +35,8 @@ def run_em(obj: object, y=None, init_from_data=False, e_kwargs=None, m_kwargs=No
     :param return_dict: None -> no return, True -> return dict, False -> return tuple of variables
     :param show_pbar: show progress bar during EM iterations
     """
-    e_kwargs = {} if e_kwargs is None else e_kwargs
-    m_kwargs = {} if m_kwargs is None else m_kwargs
+    e_kwargs = e_kwargs or {}
+    m_kwargs = m_kwargs or {}
 
     # Initialize from data
     if init_from_data:
@@ -56,7 +56,7 @@ def run_em(obj: object, y=None, init_from_data=False, e_kwargs=None, m_kwargs=No
             # E step
             e_results, stop_var = obj.e_step(y=y, **e_kwargs)
             stop_var_tally.append(stop_var)
-            if type(stop_var) is bool and stop_var:
+            if isinstance(stop_var, bool) and stop_var:
                 break  # break EM while loop
             else:
                 assert stop_var >= 0, 'Stopping variable should be non-negative. Current value = ' + str(stop_var) + '!'

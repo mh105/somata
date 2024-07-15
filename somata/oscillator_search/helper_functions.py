@@ -160,10 +160,10 @@ def initialize_newosc(fs, innovations, existing_freqs=None, freq_res=1, ar_order
 def aic_calc(osc, ll):
     """ Calculate AIC """
     if osc.dc_idx is None:
-        param_num = osc.ncomp * 3 + 1  # each oscillator has 3 parameters + obs noise variance
+        k = osc.ncomp * 3 + 1  # each oscillator has 3 parameters + obs noise variance
     else:
-        param_num = osc.ncomp * 3  # each osc has 3 parameters, each dc has 2, + obs noise variance
-    return 2 * param_num - 2 * ll
+        k = osc.ncomp * 3  # each osc has 3 parameters, each dc has 2, + obs noise variance
+    return 2 * k - 2 * ll
 
 
 def aic_weights(aic_list):
@@ -174,6 +174,23 @@ def aic_weights(aic_list):
     """
     deltas = (aic_list - np.min(aic_list)) / 2
     return np.exp(-deltas) / np.sum(np.exp(-deltas))
+
+
+def ebic_calc(osc, ll, osc_range, gamma=0.5):
+    """
+    Calculate extended Bayesian Information Criterion (EBIC).
+    When gamma=0, EBIC is equivalent to BIC
+
+    Reference:
+        Chen, J., & Chen, Z. (2008). Extended Bayesian information criteria
+        for model selection with large model spaces. Biometrika, 95(3), 759-771.
+    """
+    if osc.dc_idx is None:
+        k = osc.ncomp * 3 + 1  # each oscillator has 3 parameters + obs noise variance
+    else:
+        k = osc.ncomp * 3  # each osc has 3 parameters, each dc has 2, + obs noise variance
+
+    return k * np.log(osc.ntime) - 2 * ll + 2 * gamma * np.log(math.comb(osc_range, osc.ncomp))
 
 
 def get_knee(ll_vec):
@@ -436,7 +453,7 @@ def plot_innovations(osc, y, innovations, a, p, add_freq=None, add_radius=None, 
 
 def plot_fit_line(fig, slope, intercept, ax=None):
     """ Add a linear fit line to an existing innovation plot figure """
-    ax = fig.axes[0] if ax is None else ax
+    ax = ax or fig.axes[0]
     x_limits = ax.get_xlim()
     l1 = ax.plot(x_limits, [x * slope + intercept for x in x_limits], label='linear fit', color='black')
     ax.set_xlim(x_limits)

@@ -30,7 +30,7 @@ class OscillatorModel(Ssm):
     y_whiten = None
 
     def __init__(self, a=None, freq=None, w=None, sigma2=None, add_dc=False,
-                 components='Osc', F=None, Q=None, mu0=None, Q0=None, G=None, R=None, y=None, Fs=None):
+                 components='Osc', F=None, Q=None, mu0=None, S0=None, G=None, R=None, y=None, Fs=None):
         """
         Constructor method for OscillatorModel class
         :param a: damping factor of oscillators
@@ -42,7 +42,7 @@ class OscillatorModel(Ssm):
         :param F: transition matrix
         :param Q: state noise covariance matrix
         :param mu0: initial state mean vector
-        :param Q0: initial state covariance matrix
+        :param S0: initial state covariance matrix
         :param G: observation matrix (row major)
         :param R: observation noise covariance matrix
         :param y: observed data (row major, can be multivariate)
@@ -94,12 +94,12 @@ class OscillatorModel(Ssm):
             assert a is None, 'No frequency provided but damping factor a is given as input.'
             assert sigma2 is None, 'No frequency provided but noise variance sigma2 is given as input.'
 
-        # Provide default values for mu0 and Q0
+        # Provide default values for mu0 and S0
         mu0 = np.zeros((F.shape[1], 1), dtype=np.float64) if mu0 is None and F is not None else mu0
-        Q0 = Q if Q0 is None and Q is not None else Q0
+        S0 = Q if S0 is None and Q is not None else S0
 
         # Call parent class constructor
-        super().__init__(components=components, F=F, Q=Q, mu0=mu0, Q0=Q0, G=G, R=R, y=y, Fs=Fs)
+        super().__init__(components=components, F=F, Q=Q, mu0=mu0, S0=S0, G=G, R=R, y=y, Fs=Fs)
 
         # Fill oscillator parameters
         self.fill_osc_param()
@@ -108,7 +108,7 @@ class OscillatorModel(Ssm):
         if add_dc:
             if self.w is None:  # shortcut to create a DC oscillator using OscillatorModel(add_dc=True)
                 o_dc = OscillatorModel(a=a, w=0., sigma2=sigma2, add_dc=False,
-                                       F=F, Q=Q, mu0=mu0, Q0=Q0, R=R, y=y, Fs=Fs)
+                                       F=F, Q=Q, mu0=mu0, S0=S0, R=R, y=y, Fs=Fs)
                 attr_dict = o_dc.__dict__
                 for attr in attr_dict.keys():
                     setattr(self, attr, getattr(o_dc, attr))
@@ -127,6 +127,7 @@ class OscillatorModel(Ssm):
         """ Helpful information when calling print(OscillatorModel()) """
         print_str = super().__str__().replace('<Ssm object at', '<Osc object at')
         # Append additional information about oscillator parameters
+        precision_backup = np.get_printoptions()['precision']
         np.set_printoptions(precision=3)
         print_str += "{0:9} = {1}\n ".format("damping a", str(self.a))
         if self.Fs is None:
@@ -138,7 +139,7 @@ class OscillatorModel(Ssm):
         print_str += "{0:9} = {1}\n ".format("sigma2", str(self.sigma2))
         print_str += "{0:9} = {1}\n ".format("obs noise R", str(self.R))
         print_str += "{0:9} = {1}\n".format("dc index", str(self.dc_idx))
-        np.set_printoptions(precision=8)
+        np.set_printoptions(precision=precision_backup)
         return print_str
 
     # Syntactic sugar methods - useful methods to make manipulations easier
@@ -147,77 +148,85 @@ class OscillatorModel(Ssm):
         Join two OscillatorModel objects together by concatenating the
         components.
         """
-        assert self.type == 'osc' and other.type == 'osc', \
-            'Both objects input to concat_() need to be of OscillatorModel class.'
+        assert self.type == 'osc', 'self in concat_() needs to be of OscillatorModel class.'
 
-        # Fill oscillator parameters in both objects first
-        self.fill_osc_param()
-        other.fill_osc_param()
+        if other.type == self.type:  # concatenation within OscillatorModel class
+            # Fill oscillator parameters in both objects first
+            self.update_comp_param()
+            other.update_comp_param()
 
-        # Handle DC oscillators if present
-        save_other_dc = None
-        save_self_dc_index = None
-        if other.dc_idx is not None:
-            if self.dc_idx is None:
-                save_other_dc = other.components[other.dc_idx]
+            # Handle DC oscillators if present
+            save_other_dc = None
+            save_self_dc_index = None
+            if other.dc_idx is not None:
+                if self.dc_idx is None:
+                    save_other_dc = other.components[other.dc_idx]
+                else:
+                    save_self_dc_index = self.dc_idx
+                # Confirm that the DC oscillator has default values therefore can be added back with constructor
+                assert other.a[other.dc_idx] == other.default_a, \
+                    'DC oscillator damping factor will be lost by concat_().'
+                assert other.w[other.dc_idx] == 0, \
+                    'DC oscillator frequency will be lost by concat_().'
+                assert other.sigma2[other.dc_idx] == other.default_sigma2, \
+                    'DC oscillator sigma2 will be lost by concat_().'
+                # Temporarily remove the DC oscillator from the other object
+                tmp_other = other.copy()
+                tmp_other.remove_component(tmp_other.dc_idx)
+                tmp_other.components = other.components[1:] if tmp_other.ncomp > 0 else tmp_other.components
+                other = tmp_other
+
+            # Frequency is a mandatory input for objects to call concat_()
+            assert self.w is not None and other.w is not None, \
+                'Both objects need at least w specified in order to concat.'
+            w = np.hstack([self.w, other.w])
+
+            # Configure the rest of attributes that are immutable
+            # a
+            if self.a is None and other.a is None:
+                a = None
+            elif self.a is None:
+                a = np.hstack([np.ones_like(self.w, dtype=np.float64) * OscillatorModel.default_a, other.a])
+            elif other.a is None:
+                a = np.hstack([self.a, np.ones_like(other.w, dtype=np.float64) * OscillatorModel.default_a])
             else:
-                save_self_dc_index = self.dc_idx
-            # Confirm that the DC oscillator has default values therefore can be added back with constructor
-            assert other.a[other.dc_idx] == other.default_a, 'DC oscillator damping factor will be lost by concat_().'
-            assert other.w[other.dc_idx] == 0, 'DC oscillator frequency will be lost by concat_().'
-            assert other.sigma2[other.dc_idx] == other.default_sigma2, 'DC oscillator sigma2 will be lost by concat_().'
-            # Temporarily remove the DC oscillator from the other object
-            tmp_other = other.copy()
-            tmp_other.remove_component(tmp_other.dc_idx)
-            tmp_other.components = other.components[1:] if tmp_other.ncomp > 0 else tmp_other.components
-            other = tmp_other
+                a = np.hstack([self.a, other.a])
 
-        # Frequency is a mandatory input for objects to call concat_()
-        assert self.w is not None and other.w is not None, 'Both objects need at least w specified in order to concat.'
-        w = np.hstack([self.w, other.w])
+            # sigma2
+            if self.sigma2 is None and other.sigma2 is None:
+                sigma2 = None
+            elif self.sigma2 is None:
+                sigma2 = np.hstack([np.ones_like(self.w, dtype=np.float64) * OscillatorModel.default_sigma2,
+                                    other.sigma2])
+            elif other.sigma2 is None:
+                sigma2 = np.hstack([self.sigma2,
+                                    np.ones_like(other.w, dtype=np.float64) * OscillatorModel.default_sigma2])
+            else:
+                sigma2 = np.hstack([self.sigma2, other.sigma2])
 
-        # Configure the rest of attributes that are immutable
-        # a
-        if self.a is None and other.a is None:
-            a = None
-        elif self.a is None:
-            a = np.hstack([np.ones_like(self.w, dtype=np.float64) * OscillatorModel.default_a, other.a])
-        elif other.a is None:
-            a = np.hstack([self.a, np.ones_like(other.w, dtype=np.float64) * OscillatorModel.default_a])
-        else:
-            a = np.hstack([self.a, other.a])
+            # S0
+            if self.S0 is None and other.S0 is None:
+                S0 = None
+            elif self.S0 is None:
+                S0 = block_diag(self.Q, other.S0) if self.Q is not None else \
+                    block_diag(np.eye(self.w.size * 2, dtype=np.float64) * OscillatorModel.default_sigma2, other.S0)
+            elif other.mu0 is None:
+                S0 = block_diag(self.S0, other.Q) if other.Q is not None else \
+                    block_diag(self.S0, np.eye(other.w.size * 2, dtype=np.float64) * OscillatorModel.default_sigma2)
+            else:
+                S0 = block_diag(self.S0, other.S0)
 
-        # sigma2
-        if self.sigma2 is None and other.sigma2 is None:
-            sigma2 = None
-        elif self.sigma2 is None:
-            sigma2 = np.hstack([np.ones_like(self.w, dtype=np.float64) * OscillatorModel.default_sigma2, other.sigma2])
-        elif other.sigma2 is None:
-            sigma2 = np.hstack([self.sigma2, np.ones_like(other.w, dtype=np.float64) * OscillatorModel.default_sigma2])
-        else:
-            sigma2 = np.hstack([self.sigma2, other.sigma2])
+            # Call parent class method to obtain general concatenated attributes
+            temp_obj = super().concat_(other, skip_components=skip_components)
+            add_dc = save_other_dc is not None
+            new_obj = OscillatorModel(a=a, w=w, sigma2=sigma2, add_dc=add_dc, components=temp_obj.components,
+                                      mu0=temp_obj.mu0, S0=S0,
+                                      R=temp_obj.R, y=temp_obj.y, Fs=temp_obj.Fs)  # fill G automatically
+            new_obj.components[0] = save_other_dc if add_dc else new_obj.components[0]
+            new_obj.dc_idx = save_self_dc_index if save_self_dc_index is not None else new_obj.dc_idx
 
-        # Q0
-        if self.Q0 is None and other.Q0 is None:
-            Q0 = None
-        elif self.Q0 is None:
-            Q0 = block_diag(self.Q, other.Q0) if self.Q is not None else \
-                block_diag(np.eye(self.w.size * 2, dtype=np.float64) * OscillatorModel.default_sigma2, other.Q0)
-        elif other.mu0 is None:
-            Q0 = block_diag(self.Q0, other.Q) if other.Q is not None else \
-                block_diag(self.Q0, np.eye(other.w.size * 2, dtype=np.float64) * OscillatorModel.default_sigma2)
-        else:
-            Q0 = block_diag(self.Q0, other.Q0)
-
-        # Call parent class method to obtain general concatenated attributes
-        temp_obj = super().concat_(other, skip_components=skip_components)
-
-        add_dc = save_other_dc is not None
-        new_obj = OscillatorModel(a=a, w=w, sigma2=sigma2, mu0=temp_obj.mu0, Q0=Q0,
-                                  R=temp_obj.R, y=temp_obj.y, Fs=temp_obj.Fs,
-                                  components=temp_obj.components, add_dc=add_dc)
-        new_obj.components[0] = save_other_dc if add_dc else new_obj.components[0]
-        new_obj.dc_idx = save_self_dc_index if save_self_dc_index is not None else new_obj.dc_idx
+        else:  # concatenation with other classes of SOMATA basic models
+            new_obj = super().concat_(other, skip_components=skip_components)
 
         return new_obj
 
@@ -226,26 +235,31 @@ class OscillatorModel(Ssm):
         Remove a component from the OscillatorModel object,
         default to remove the left most component
         """
-        super().remove_component(comp_idx=comp_idx)
-        if self.dc_idx is not None:
-            if comp_idx == self.dc_idx:
-                self.dc_idx = None
-            elif comp_idx < self.dc_idx:
-                self.dc_idx -= 1
-        if self.a is not None:
-            self.a = np.delete(self.a, comp_idx)
-        if self.w is not None:
-            self.w = np.delete(self.w, comp_idx)
-        if self.freq is not None:
-            self.freq = np.delete(self.freq, comp_idx)
-        if self.sigma2 is not None:
-            self.sigma2 = np.delete(self.sigma2, comp_idx)
+        if isinstance(comp_idx, list):  # recursive case
+            comp_idx_list = list(np.sort(comp_idx)[::-1])
+            for comp_idx in comp_idx_list:
+                self.remove_component(comp_idx=comp_idx)
+        else:  # base case
+            super().remove_component(comp_idx=comp_idx)
+            if self.dc_idx is not None:
+                if comp_idx == self.dc_idx:
+                    self.dc_idx = None
+                elif comp_idx < self.dc_idx:
+                    self.dc_idx -= 1
+            if self.a is not None:
+                self.a = np.delete(self.a, comp_idx)
+            if self.w is not None:
+                self.w = np.delete(self.w, comp_idx)
+            if self.freq is not None:
+                self.freq = np.delete(self.freq, comp_idx)
+            if self.sigma2 is not None:
+                self.sigma2 = np.delete(self.sigma2, comp_idx)
 
-        # Set attributes to default values if nothing left
-        self.a = None if len(self.a) == 0 else self.a
-        self.w = None if len(self.w) == 0 else self.w
-        self.freq = None if len(self.freq) == 0 else self.freq
-        self.sigma2 = None if len(self.sigma2) == 0 else self.sigma2
+            # Set attributes to default values if nothing left
+            self.a = None if len(self.a) == 0 else self.a
+            self.w = None if len(self.w) == 0 else self.w
+            self.freq = None if len(self.freq) == 0 else self.freq
+            self.sigma2 = None if len(self.sigma2) == 0 else self.sigma2
 
     def add_dc(self):
         """ Add a DC oscillator to an existing OscillatorModel object """
@@ -257,7 +271,7 @@ class OscillatorModel(Ssm):
 
     def fill_components(self, empty_comp=None, deep_copy=True):
         """ Fill the components attribute with OscillatorModel parameters """
-        empty_comp = OscillatorModel() if empty_comp is None else empty_comp
+        empty_comp = empty_comp or OscillatorModel()
         return super().fill_components(empty_comp=empty_comp, deep_copy=deep_copy)
 
     def fill_osc_param(self, F=None, Q=None, Fs=None):
@@ -325,7 +339,7 @@ class OscillatorModel(Ssm):
         matrix Q in the Q_basis block diagonal form
         """
         components = self.components if components is None else components
-        if len(components) == 1 or type(components) is OscillatorModel:
+        if len(components) == 1 or isinstance(components, OscillatorModel):
             E = np.eye(1, dtype=np.float64) if E is None else E
             default_Q = block_diag(E, E)
         else:
@@ -599,7 +613,7 @@ class OscillatorModel(Ssm):
             if priors is None:
                 priors: list = [None] * self.ncomp
                 priors[self.dc_idx] = {'dc': True}
-            elif type(priors) is dict:
+            elif isinstance(priors, dict):
                 priors['dc'] = True
                 priors = [priors]
             else:
@@ -761,7 +775,7 @@ class OscillatorModel(Ssm):
             Q_ss_block += Q_ss[start_idx:end_idx, start_idx:end_idx]
 
         # Update the expansion coefficient for each source
-        if type(Q_basis) is list:  # using non-orthonormal kernel
+        if isinstance(Q_basis, list):  # using non-orthonormal kernel
             Theta = Src.update_theta(Q_ss=Q_ss_block, T=T, Q_basis=Q_basis[1],
                                      nsource=nsource, npart=nstate, priors=priors)
             Q_new = torch.block_diag(*[Q_basis[0] @ torch.diag(Theta) @ Q_basis[0].T] * nstate)
@@ -772,12 +786,12 @@ class OscillatorModel(Ssm):
         return Q_new
 
     @staticmethod
-    def _m_update_q0(x_0_n=None, P_0_n=None, mu0=None):
-        """ Update initial state covariance -- Q0 """
-        sigma2_Q0 = OscillatorModel.tr(P_0_n + x_0_n[:, None] @ x_0_n[:, None].T
+    def _m_update_S0(x_0_n=None, P_0_n=None, mu0=None):
+        """ Update initial state covariance -- S0 """
+        sigma2_S0 = OscillatorModel.tr(P_0_n + x_0_n[:, None] @ x_0_n[:, None].T
                                        - x_0_n[:, None] @ mu0.T - mu0 @ x_0_n[:, None].T + mu0 @ mu0.T) / 2
-        Q0 = sigma2_Q0 * np.eye(2, dtype=sigma2_Q0.dtype)
-        return Q0
+        S0 = sigma2_S0 * np.eye(2, dtype=sigma2_S0.dtype)
+        return S0
 
     @staticmethod
     def _m_update_g(y=None, x_t_n=None, P_t_n=None, h_t=None, C=None, D=None):

@@ -207,7 +207,7 @@ def resolution_matrix_metrics(K, src):
     return SD, DLE, RI
 
 
-def smart_djkalman_conv_torch(F, Q, mu0, Q0, G, R, y, rank, proj, conv_steps=100):
+def smart_djkalman_conv_torch(F, Q, mu0, S0, G, R, y, rank, proj, conv_steps=100):
     """
     Wrapper of djkalman_conv_torch() to pre-whiten observed data
 
@@ -263,7 +263,7 @@ def smart_djkalman_conv_torch(F, Q, mu0, Q0, G, R, y, rank, proj, conv_steps=100
     R = torch.eye(R.shape[0], dtype=dtype).cuda()
 
     x_t_n, P_t_n, P_t_tmin1_n, logL, break_conv, K_t, x_t_tmin1, P_t_tmin1 = djkalman_conv_torch(
-        F, Q, mu0, Q0, G, R, y, conv_steps, dtype)
+        F, Q, mu0, S0, G, R, y, conv_steps, dtype)
 
     # adjust log-likelihood by adding back the -1/2 logdet term
     qlog2pi_by_n2 = -y.shape[0] * torch.log(torch.as_tensor(2 * torch.pi, dtype=dtype).cuda()) / 2

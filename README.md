@@ -3,13 +3,14 @@
 Github: https://github.com/mh105/somata
 
 **State-space Oscillator Modeling And Time-series Analysis (SOMATA)** is a Python library for state-space neural signal
-processing algorithms developed in the [Purdon Lab](https://purdonlab.mgh.harvard.edu).
+processing algorithms developed in the [Purdon Lab](https://purdonlab.stanford.edu).
 Basic state-space models are introduced as class objects for flexible manipulations.
 Classical exact and approximate inference algorithms are implemented and interfaced as class methods.
 Advanced neural oscillator modeling techniques are brought together to work synergistically.
 
 [![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg)](https://github.com/mh105/pot/commits/master)
-[![made-with-python](https://img.shields.io/badge/Made%20with-Python-1f425f.svg)](https://www.python.org/)
+[![Last-Update](https://anaconda.org/conda-forge/somata/badges/latest_release_date.svg
+)](https://anaconda.org/conda-forge/somata)
 [![License: BSD 3-Clause Clear](https://img.shields.io/badge/License-BSD%203--Clause%20Clear-lightgrey.svg)](https://spdx.org/licenses/BSD-3-Clause-Clear.html)
 [![DOI](https://zenodo.org/badge/556083594.svg)](https://zenodo.org/badge/latestdoi/556083594)
 
@@ -108,7 +109,7 @@ Bayesian inference and learning. This is a deliberate choice to allow easier, fa
 
 ### _class_ StateSpaceModel
 ```python
-somata.StateSpaceModel(components=None, F=None, Q=None, mu0=None, Q0=None, G=None, R=None, y=None, Fs=None)
+somata.StateSpaceModel(components=None, F=None, Q=None, mu0=None, S0=None, G=None, R=None, y=None, Fs=None)
 ```
 `StateSpaceModel` is the parent class of basic state-space models. The corresponding Gaussian linear dynamical system is:
 
@@ -158,7 +159,7 @@ The double-under method `__str__()` is overwritten so `print()` returns useful i
  nmodel   = 1
  components = None
  F  .shape = None       Q  .shape = None
- mu0.shape = None       Q0 .shape = None
+ mu0.shape = None       S0 .shape = None
  G  .shape = None       R  .shape = None
  y  .shape = None       Fs = None
 ```
@@ -167,7 +168,7 @@ The double-under method `__str__()` is overwritten so `print()` returns useful i
 
 In many applications, there are several possible parameter values for a given state-space model structure. Instead of duplicating
 the same values in multiple instances, somata uses _stacking_ to store multiple model values in the same object instance. Stackable
-model parameters are `F, Q, mu0, Q0, G, R`. For example:
+model parameters are `F, Q, mu0, S0, G, R`. For example:
 
 ```python
 >>> s1 = StateSpaceModel(F=1, Q=2)
@@ -179,7 +180,7 @@ model parameters are `F, Q, mu0, Q0, G, R`. For example:
  nmodel   = 1
  components = None
  F  .shape = (1, 1)     Q  .shape = (1, 1)
- mu0.shape = None       Q0 .shape = None
+ mu0.shape = None       S0 .shape = None
  G  .shape = None       R  .shape = None
  y  .shape = None       Fs = None
 
@@ -190,7 +191,7 @@ model parameters are `F, Q, mu0, Q0, G, R`. For example:
  nmodel   = 1
  components = None
  F  .shape = (1, 1)     Q  .shape = (1, 1)
- mu0.shape = None       Q0 .shape = None
+ mu0.shape = None       S0 .shape = None
  G  .shape = None       R  .shape = None
  y  .shape = None       Fs = None
 
@@ -202,7 +203,7 @@ model parameters are `F, Q, mu0, Q0, G, R`. For example:
  nmodel   = 2
  components = None
  F  .shape = (1, 1, 2)  Q  .shape = (1, 1)
- mu0.shape = None       Q0 .shape = None
+ mu0.shape = None       S0 .shape = None
  G  .shape = None       R  .shape = None
  y  .shape = None       Fs = None
 ```
@@ -231,7 +232,7 @@ parameters each with several possible values. For example:
  nmodel   = 2
  components = None
  F  .shape = (1, 1, 2)  Q  .shape = (1, 1, 2)
- mu0.shape = None       Q0 .shape = None
+ mu0.shape = None       S0 .shape = None
  G  .shape = None       R  .shape = (1, 1)
  y  .shape = None       Fs = None
 
@@ -243,7 +244,7 @@ parameters each with several possible values. For example:
  nmodel   = 4
  components = None
  F  .shape = (1, 1, 4)  Q  .shape = (1, 1, 4)
- mu0.shape = None       Q0 .shape = None
+ mu0.shape = None       S0 .shape = None
  G  .shape = None       R  .shape = (1, 1)
  y  .shape = None       Fs = None
 
@@ -295,7 +296,7 @@ exists on the respective observation equations and observed data, if any.
  nmodel   = 1
  components = None
  F  .shape = (2, 2)     Q  .shape = (2, 2)
- mu0.shape = None       Q0 .shape = None
+ mu0.shape = None       S0 .shape = None
  G  .shape = None       R  .shape = (1, 1)
  y  .shape = None       Fs = None
 
@@ -334,7 +335,7 @@ the appropriate m-step update methods associated with different types of state-s
 ### _class_ OscillatorModel(StateSpaceModel)
 ```python
 somata.OscillatorModel(a=None, freq=None, w=None, sigma2=None, add_dc=False,
-                       components='Osc', F=None, Q=None, mu0=None, Q0=None, G=None, R=None, y=None, Fs=None)
+                       components='Osc', F=None, Q=None, mu0=None, S0=None, G=None, R=None, y=None, Fs=None)
 ```
 `OscillatorModel` is a child class of `StateSpaceModel`, which means it inherits all the class methods explained above. It has a particular form of the state-space model:
 
@@ -367,7 +368,7 @@ Osc(1)<81f0>
  nmodel   = 1
  components = [Osc(0)<4b50>]
  F  .shape = (2, 2)     Q  .shape = (2, 2)
- mu0.shape = (2, 1)     Q0 .shape = (2, 2)
+ mu0.shape = (2, 1)     S0 .shape = (2, 2)
  G  .shape = (1, 2)     R  .shape = None
  y  .shape = None       Fs = 100.0 Hz
  damping a = [0.9]
@@ -384,7 +385,7 @@ with the `sigma2` argument to the constructor method.
 ### _class_ AutoRegModel(StateSpaceModel)
 ```python
 somata.AutoRegModel(coeff=None, sigma2=None,
-                    components='Arn', F=None, Q=None, mu0=None, Q0=None, G=None, R=None, y=None, Fs=None)
+                    components='Arn', F=None, Q=None, mu0=None, S0=None, G=None, R=None, y=None, Fs=None)
 ```
 `AutoRegModel` is a child class of `StateSpaceModel`, which means it inherits all the class methods explained above. It has a particular form of the state-space model. For example, an auto-regressive model of order 3 can be expressed as:
 
@@ -417,7 +418,7 @@ Arn=3<24d0>
  nmodel   = 1
  components = [Arn=3<2680>]
  F  .shape = (3, 3)     Q  .shape = (3, 3)
- mu0.shape = (3, 1)     Q0 .shape = (3, 3)
+ mu0.shape = (3, 1)     S0 .shape = (3, 3)
  G  .shape = (1, 3)     R  .shape = None
  y  .shape = None       Fs = None
  AR order  = [3]
@@ -430,7 +431,7 @@ Note that `__repr__()` is slightly different for `AutoRegModel`, since the key i
 
 ### _class_ GeneralSSModel(StateSpaceModel)
 ```python
-somata.GeneralSSModel(components='Gen', F=None, Q=None, mu0=None, Q0=None, G=None, R=None, y=None, Fs=None)
+somata.GeneralSSModel(components='Gen', F=None, Q=None, mu0=None, S0=None, G=None, R=None, y=None, Fs=None)
 ```
 `GeneralSSModel` is a child class of `StateSpaceModel`, which means it inherits all the class methods explained above. The same general Gaussian linear dynamic system as before is followed:
 
@@ -447,7 +448,7 @@ $$
 $$
 
 `GeneralSSModel` is added to somata so that one can perform the most general Gaussian updates for a state-space model without special structures as specified in `OscillatorModel` and `AutoRegModel`. In other words, with non-sparse structures in the model parameters
-`F, Q, Q0, G, R`. To create a simple general state-space model:
+`F, Q, S0, G, R`. To create a simple general state-space model:
 
 ```python
 >>> g1 = GeneralSSModel(F=[[1,2],[3,4]])
@@ -460,20 +461,20 @@ Gen(1)<2440>
  nmodel   = 1
  components = [Gen(0)<2710>]
  F  .shape = (2, 2)     Q  .shape = None
- mu0.shape = None       Q0 .shape = None
+ mu0.shape = None       S0 .shape = None
  G  .shape = None       R  .shape = None
  y  .shape = None       Fs = None
 ```
 
 ### For more in-depth working examples with the basic models in somata
-Look at the demo script [basic_models_demo_08302023.py](examples/basic_models_demo_08302023.py) and execute the code line by line to get familiar with class objects and methods of somata basic models.
+Look at the demo script [basic_models_demo_04092024.py](examples/basic_models_demo_04092024.py) and execute the code in this file _line by line_ to get familiar with the class objects and methods of `somata` basic models.
 
 ---
 
 ## Advanced neural oscillator methods
 1. [Oscillator Model Learning](#1-oscillator-model-learning)
 2. [Phase Amplitude Coupling Estimation](#2-phase-amplitude-coupling-estimation)
-3. [Iterative Oscillator Algorithm](#3-iterative-oscillator-algorithm)
+3. [Oscillator Search Algorithms](#3-oscillator-search-algorithms)
 4. [Switching State-Space Inference](#4-switching-state-space-inference)
 5. [Multi-channel Oscillator Component Analysis](#5-multi-channel-oscillator-component-analysis)
 6. [State-Space Event Related Potential](#6-state-space-event-related-potential)
@@ -491,28 +492,61 @@ For fitting data with oscillator models, it boils down to three steps:
   - Perform state estimation, i.e., E-step
   - Update model parameters, i.e., M-step
 
-Given some time series `data`, we can fit an oscillator to the data using the expectation-maximization (EM) algorithm.
+Given some univariate time series `data`, we can fit an oscillator to the data using the expectation-maximization (EM) algorithm.
 ```python
 from somata.basic_models import OscillatorModel as Osc
 o1 = Osc(freq=1, Fs=100, y=data)  # create an oscillator object instance
-_ = [o1.m_estimate(**o1.kalman_filt_smooth(EM=True))for x in range(50)]  # run 50 steps of EM
+_ = [o1.m_estimate(**o1.kalman_filt_smooth(EM=True))for x in range(50)]  # 50 EM steps
 ```
 
 ---
 <picture>
-   <img align="right" src="https://img.shields.io/badge/Status-Missing-critical.svg?logo=Python">
+   <img align="right" src="https://img.shields.io/badge/Status-Functional-success?logo=Python">
 </picture>
 
 ### 2. Phase Amplitude Coupling Estimation
+
+Quantifying phase amplitude coupling, as described by [Soulat et al. 2022](https://www.nature.com/articles/s41598-022-18475-3), consists of three steps:
+
+1. Fitting an oscillator model to compute instantaneous phase and amplitude (either to full-length data or windowed epochs).
+2. Fitting a constrained regression to the estimated phase ($\phi_t$) and amplitude ($A_t$) vectors:
+
+$$
+A_t = \beta_0 + \beta_1 \cos (\phi_t) + \beta_2 \sin (\phi_t) + \epsilon_t, \epsilon_t \sim \mathcal{N}(0, \sigma_\beta^2),
+$$
+
+$$
+s.t. \ \ \beta_1^2 + \beta_2^2 \leq \beta_0^2.
+$$
+
+- Note that with $A_0 = \beta_0$, $K^{\text{mod}} = \sqrt{\beta_1^2 + \beta_2^2} / \beta_0$, and $\phi^{\text{mod}} = \tan^{-1}\left(\beta_2/\beta_1\right)$, this regression equation is equivalent to:
+
+$$
+A_t = A_0\left[1 + K^{\text{mod}} \cos \left(\phi_t - \phi^{\text{mod}}\right)\right] + \epsilon_t, \epsilon_t \sim \mathcal{N}(0, \sigma_\beta^2),
+$$
+
+$$
+s.t. \ \ 0 \leq K^{\text{mod}} \lt 1.
+$$
+
+3. _(If there are multiple windows)_ Smoothing using an AR(p) model with observation noise. Model parameters are first learned through an instance of the EM algorithm initialized by numerical optimization of modified Yule-Walker equations. Kalman smoothing is then applied to $\boldsymbol{\beta}$ estimates across windows.
+
+Step 1 can be accomplished using [Oscillator Model Learning](#1-oscillator-model-learning) or [Oscillator Search Algorithms](#3-oscillator-search-algorithms). We accomplish step 2 through Markov Chain Monte Carlo sampling using CmdStanPy; see [pac_model.py](somata/pac/pac_model.py). Functions to facilitate step 3 are also implemented in this module and can be called.
+
+When using this module, please cite the following [paper](https://www.nature.com/articles/s41598-022-18475-3):
+
+Soulat, H., Stephen, E. P., Beck, A. M., & Purdon, P. L. (2022). State space methods for phase amplitude coupling analysis. Scientific Reports, 12(1), 15940.
 
 ---
 <picture>
    <img align="right" src="https://img.shields.io/badge/Status-Functional-success.svg?logo=Python">
 </picture>
 
-### 3. Iterative Oscillator Algorithm
+### 3. Oscillator Search Algorithms
 
-For a well-commented example script, see [IterOsc_example.py](examples/IterOsc_example.py).
+There are two similarly flavored univariate oscillator search methods in this module: iterative oscillator search (iOsc) and decomposition oscillator search (dOsc) algorithms.
+
+- iOsc: for a well-commented example script, see [IterOsc_example.py](examples/IterOsc_example.py).
 
 _**N.B.:** We recommend downsampling to 120 Hz or less, depending on the oscillations present in your data. Highly oversampled data will make it more difficult to identify oscillatory components, increase the computational time, and could also introduce high frequency noise._
 
@@ -522,9 +556,11 @@ One major goal of this method was to produce an algorithm that requires minimal 
 
 2. This algorithm assumes stationary parameters, and therefore a stationary signal. Although the Kalman smoothing allows the model to work with some time-varying signal, the success of the method depends on the strength and duration of the signal components. The weaker and more brief the time-varying component is, the more poorly the model will capture it, if at all. We recommend decreasing the length of your window until you have a more stationary signal.
 
-When using this module, please cite the following [paper](https://www.biorxiv.org/content/10.1101/2022.10.30.514422):
+When using the original iOsc algorithm, please cite the following [paper](https://www.biorxiv.org/content/10.1101/2022.10.30.514422):
 
 Beck, A. M., He, M., Gutierrez, R. G., & Purdon, P. L. (2022). An iterative search algorithm to identify oscillatory dynamics in neurophysiological time series. bioRxiv, 2022-10.
+
+- dOsc: for a well-commented example script, see [DecOsc_example.py](examples/DecOsc_example.py).
 
 ---
 <picture>
@@ -561,11 +597,11 @@ He, M., Das, P., Hotan, G., & Purdon, P. L. (2023). Switching state-space modeli
 ---
 
 ## Authors
-Mingjian He, Proloy Das, Amanda Beck, Patrick Purdon
+Mingjian He, Proloy Das, Ran Liu, Amanda Beck, Patrick Purdon
 
 ## Citation
 Use different citation styles at: https://doi.org/10.5281/zenodo.7242130
 
 ## License
 SOMATA is licensed under the [BSD 3-Clause Clear license](https://spdx.org/licenses/BSD-3-Clause-Clear.html).\
-Copyright © 2023. All rights reserved.
+Copyright © 2024. All rights reserved.

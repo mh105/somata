@@ -7,7 +7,7 @@ from .helper_functions import (
     initialize_allosc, plot_mtm, plot_innovations,
     plot_residual, plot_acf, plot_pacf,
     get_innovations, get_knee, get_ar_psd,
-    fit_ar, plot_fit_line
+    fit_ar, plot_fit_line, ebic_calc
     )
 import pandas as pd
 from ..utils import estimate_r
@@ -16,7 +16,7 @@ from ..utils import estimate_r
 class DecomposedOscillatorModel(object):
     """
     DecomposedOscillatorModel is an object class containing fitted OscillatorModel objects
-    from the oscillator decomposition algorithm
+    from the decomposed oscillator search algorithm
     """
     def __init__(self, y, fs, noise_start=None, osc_range=7, iterate=False, **kwargs):
         """
@@ -43,6 +43,7 @@ class DecomposedOscillatorModel(object):
         self.added_osc = initialize_allosc(fs, y, R, osc_range=osc_range)
         self.fitted_osc = []
         self.ll = []
+        self.ebic = []
         self.knee_index = None
 
         self.iterate(**kwargs) if iterate else None  # perform learning iterations
@@ -51,17 +52,20 @@ class DecomposedOscillatorModel(object):
         """ Re-instantiate the instance object with the same data """
         self.__init__(self.added_osc[0].y, self.added_osc[0].Fs, noise_start=self.noise_start, osc_range=self.osc_range)
 
-    def iterate(self, keep_param=(), R_hp=0.1, preiterate=False, model_select='knee', plot_fit=False):
+    def iterate(self, freq_res=None, keep_param=(), preiterate=False,
+                R_hp=0.1, model_select='knee', plot_fit=False, verbose=None):
         """
-        Oscillator Decomposition Algorithm
+        Decomposed Oscillator Search (dOsc) Algorithm
 
         Inputs:
         :param self: DecomposedOscillatorModel class instance
+        :param freq_res: not used but kept for inheritance by the OscillatorModel class
         :param keep_param: a tuple of strings for parameters to keep and not update
-        :param R_hp: hyperparameter in Inverse Gamma Prior determining weight on prior mode compared to MLE
         :param preiterate: prefit the oscillators to be added and sort in descending order of peak PSD
-        :param model_select: 'knee' or 'max' to select the model with the knee or maximum likelihood
+        :param R_hp: hyperparameter in Inverse Gamma Prior determining weight on prior mode compared to MLE
+        :param model_select: 'knee', 'max', or 'ebic' to select with the knee, maximum likelihood, or minimum BIC
         :param plot_fit: plot the fitted oscillator spectra at each iteration
+        :param verbose: not used but kept for inheritance by the OscillatorModel class
         """
         # Prefit the AR eigenmodes as oscillators and sort them in descending order of peak PSD
         self.added_osc = self.preiterate(keep_param=keep_param, R_hp=R_hp) if preiterate else self.added_osc
@@ -82,14 +86,17 @@ class DecomposedOscillatorModel(object):
 
             self.fitted_osc.append(o1.copy(drop_y=True))
             self.ll.append(o1.dejong_filt_smooth(return_dict=True)['logL'].sum())
+            self.ebic.append(ebic_calc(osc=o1, ll=self.ll[-1], osc_range=self.osc_range, gamma=0))
 
         # Find the knee_index for the selected model of fitted oscillators
         if model_select == 'knee':
             self.knee_index = get_knee(self.ll)
         elif model_select == 'max':
             self.knee_index = np.argmax(self.ll)
+        elif model_select == 'ebic':
+            self.knee_index = np.argmin(self.ebic)
         else:
-            raise ValueError('model_select must be either "knee" or "max"')
+            raise ValueError('model_select must be either "knee", "max", or "ebic"')
 
     def preiterate(self, keep_param=(), R_hp=0.1):
         """ Prefit the oscillators to be added and sort in descending order of peak PSD """

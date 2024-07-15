@@ -1,5 +1,5 @@
 {% set name = "somata" %}
-{% set version = "0.4.1" %}
+{% set version = "0.5.1" %}
 
 package:
   name: "{{ name|lower }}"
@@ -21,7 +21,7 @@ requirements:
   run:
     - python >=3.8
     - numpy >=1.22
-    - torch>=1.12.1
+    - pytorch >=1.12.1
     - codetiming
     - colorcet
     - joblib

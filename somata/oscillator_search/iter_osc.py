@@ -15,7 +15,7 @@ from ..utils import estimate_r
 class IterativeOscillatorModel(DecomposedOscillatorModel):
     """
     IterativeOscillatorModel is an object class containing fitted OscillatorModel objects
-    from the iterative oscillator algorithm
+    from the iterative oscillator search algorithm
     """
     def __init__(self, y, fs, noise_start=None, osc_range=7, iterate=False, **kwargs):
         """
@@ -57,13 +57,15 @@ class IterativeOscillatorModel(DecomposedOscillatorModel):
         self.iterate(**kwargs) if iterate else None  # perform learning iterations
 
     def iterate(self, freq_res=1, keep_param=(), reiterate=False, sigma2_method='eig',
-                freq_hp=0, R_hp=0.1, Q_hp=None, R_sigma2='constant', Q_sigma2='MLE', no_priors=False,
-                track_params=False, plot_fit=False, verbose=False):
+                freq_hp=0, R_hp=0.1, Q_hp=None, R_sigma2='constant', Q_sigma2='MLE',
+                no_priors=False, track_params=False, plot_fit=False, verbose=False):
         """
-        Iterative Oscillator Algorithm
+        Iterative Oscillator Search (iOsc) Algorithm
 
         Reference:
-            Beck, A. M., He, M., Gutierrez, R. G. & Purdon, P. L. (in prep)
+            Beck, A. M., He, M., Gutierrez, R. G., & Purdon, P. L. (2022). An iterative
+            search algorithm to identify oscillatory dynamics in neurophysiological
+            time series. bioRxiv, 2022-10.
 
             Matsuda & Komaki (2017). Time Series Decomposition into Oscillation
             Components and Phase Estimation. Journal of Neural Computation, 29, 332-367.
@@ -148,7 +150,7 @@ class IterativeOscillatorModel(DecomposedOscillatorModel):
 
             # Run EM iterations
             em_params = []  # store the oscillator parameters throughout EM iterations
-            for x in range(50):
+            for _ in range(50):
                 _ = o1.m_estimate(**o1.dejong_filt_smooth(EM=True), priors=priors, keep_param=self.keep_param)
                 if track_params:
                     em_params.append(o1.copy(drop_y=True))

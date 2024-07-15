@@ -24,7 +24,7 @@ class AutoRegModel(Ssm):
     sigma2 = None
 
     def __init__(self, coeff=None, sigma2=None,
-                 components='Arn', F=None, Q=None, mu0=None, Q0=None, G=None, R=None, y=None, Fs=None):
+                 components='Arn', F=None, Q=None, mu0=None, S0=None, G=None, R=None, y=None, Fs=None):
         """
         Constructor method for AutoRegModel class
         :param coeff: coefficients of AR models
@@ -33,7 +33,7 @@ class AutoRegModel(Ssm):
         :param F: transition matrix
         :param Q: state noise covariance matrix
         :param mu0: initial state mean vector
-        :param Q0: initial state covariance matrix
+        :param S0: initial state covariance matrix
         :param G: observation matrix (row major)
         :param R: observation noise covariance matrix
         :param y: observed data (row major, can be multivariate)
@@ -55,6 +55,8 @@ class AutoRegModel(Ssm):
                 sigma2 = np.asanyarray([sigma2], dtype=np.float64) if \
                     isinstance(sigma2, numbers.Number) else np.asanyarray(sigma2, dtype=np.float64)
                 assert sigma2.size == len(coeff), 'Different numbers of AR model parameters provided.'
+            elif Q is not None:
+                sigma2 = np.asanyarray([self._process_constructor_input(Q)[0, 0]])
             else:
                 sigma2 = np.ones_like(order, dtype=np.float64) * AutoRegModel.default_sigma2
 
@@ -69,11 +71,11 @@ class AutoRegModel(Ssm):
                 assert (Q == Q_tmp).all(), 'Input state equation parameters do not agree with input Q.'  # type: ignore
             F, Q = F_tmp, Q_tmp
         else:
-            assert sigma2 is None, 'No coefficient provided but noise variance sigma2 is given as input.'
+            assert sigma2 is None and Q is None, 'No coefficient provided but state noise variance input is given.'
 
-        # Provide default values for mu0 and Q0
+        # Provide default values for mu0 and S0
         mu0 = np.zeros((F.shape[1], 1), dtype=np.float64) if mu0 is None and F is not None else mu0
-        Q0 = Q if Q0 is None and Q is not None else Q0
+        S0 = Q[0, 0] * np.eye(Q.shape[1], dtype=np.float64) if S0 is None and Q is not None else S0
 
         # Fill autoregressive parameters
         self.fill_arn_param(F=F, Q=Q)
@@ -100,7 +102,7 @@ class AutoRegModel(Ssm):
             self.default_G = components[0].default_G
 
         # Call parent class constructor
-        super().__init__(components=components, F=F, Q=Q, mu0=mu0, Q0=Q0, G=G, R=R, y=y, Fs=Fs)
+        super().__init__(components=components, F=F, Q=Q, mu0=mu0, S0=S0, G=G, R=R, y=y, Fs=Fs)
 
     # Dunder methods - magic methods
     def __repr__(self):
@@ -115,6 +117,7 @@ class AutoRegModel(Ssm):
         """ Helpful information when calling print(AutoRegModel()) """
         print_str = super().__str__().replace('<Ssm object at', '<Arn object at')
         # Append additional information about autoregressive parameters
+        precision_backup = np.get_printoptions()['precision']
         np.set_printoptions(precision=3)
         print_str += "{0:9} = {1}\n ".format("AR order", str(self.order))
 
@@ -129,7 +132,7 @@ class AutoRegModel(Ssm):
         print_str += "{0:9} = {1}\n ".format("AR coeff", coeff_str)
 
         print_str += "{0:9} = {1}\n ".format("sigma2", str(self.sigma2))
-        np.set_printoptions(precision=8)
+        np.set_printoptions(precision=precision_backup)
         return print_str
 
     # Syntactic sugar methods - useful methods to make manipulations easier
@@ -138,73 +141,85 @@ class AutoRegModel(Ssm):
         Join two AutoRegModel objects together by concatenating the
         components.
         """
-        assert self.type == 'arn' and other.type == 'arn', \
-            'Both objects input to concat_() need to be of AutoRegModel class.'
+        assert self.type == 'arn', 'self in concat_() needs to be of AutoRegModel class.'
 
-        # Fill autoregressive parameters in both objects first
-        self.fill_arn_param()
-        other.fill_arn_param()
+        if other.type == self.type:  # concatenation within AutoRegModel class
+            # Fill autoregressive parameters in both objects first
+            self.update_comp_param()
+            other.update_comp_param()
 
-        # Coefficient is a mandatory input for objects to call concat_()
-        assert self.coeff is not None and other.coeff is not None, \
-            'Both objects need at least coeff specified in order to concat.'
-        tmp_coeff = list(self.coeff)
-        for x in other.coeff:
-            tmp_coeff.append(x)
-        coeff = tuple(tmp_coeff)
+            # Coefficient is a mandatory input for objects to call concat_()
+            assert self.coeff is not None and other.coeff is not None, \
+                'Both objects need at least coeff specified in order to concat.'
+            tmp_coeff = list(self.coeff)
+            for x in other.coeff:
+                tmp_coeff.append(x)
+            coeff = tuple(tmp_coeff)
 
-        # Configure the rest of attributes that are immutable
-        # sigma2
-        if self.sigma2 is None and other.sigma2 is None:
-            sigma2 = None
-        elif self.sigma2 is None:
-            sigma2 = np.hstack([np.ones_like(self.coeff, dtype=np.float64) * AutoRegModel.default_sigma2, other.sigma2])
-        elif other.sigma2 is None:
-            sigma2 = np.hstack([self.sigma2, np.ones_like(other.coeff, dtype=np.float64) * AutoRegModel.default_sigma2])
-        else:
-            sigma2 = np.hstack([self.sigma2, other.sigma2])
+            # Configure the rest of attributes that are immutable
+            # sigma2
+            if self.sigma2 is None and other.sigma2 is None:
+                sigma2 = None
+            elif self.sigma2 is None:
+                sigma2 = np.hstack([np.ones_like(self.coeff, dtype=np.float64) * AutoRegModel.default_sigma2,
+                                    other.sigma2])
+            elif other.sigma2 is None:
+                sigma2 = np.hstack([self.sigma2,
+                                    np.ones_like(other.coeff, dtype=np.float64) * AutoRegModel.default_sigma2])
+            else:
+                sigma2 = np.hstack([self.sigma2, other.sigma2])
 
-        # Q0
-        if self.Q0 is None and other.Q0 is None:
-            Q0 = None
-        elif self.Q0 is None:
-            tmp_sigma2 = np.ones_like(self.order, dtype=np.float64) * AutoRegModel.default_sigma2
-            _, tmp_Q0 = self._arn_to_ssm_param(sigma2=tmp_sigma2)
-            Q0 = block_diag(tmp_Q0, other.Q0)
-        elif other.mu0 is None:
-            tmp_sigma2 = np.ones_like(other.order, dtype=np.float64) * AutoRegModel.default_sigma2
-            _, tmp_Q0 = AutoRegModel._arn_to_ssm_param(self=other, sigma2=tmp_sigma2)
-            Q0 = block_diag(self.Q0, tmp_Q0)
-        else:
-            Q0 = block_diag(self.Q0, other.Q0)
+            # S0
+            if self.S0 is None and other.S0 is None:
+                S0 = None
+            elif self.S0 is None:
+                tmp_sigma2 = np.ones_like(self.order, dtype=np.float64) * AutoRegModel.default_sigma2
+                _, tmp_S0 = self._arn_to_ssm_param(sigma2=tmp_sigma2)
+                S0 = block_diag(tmp_S0, other.S0)
+            elif other.mu0 is None:
+                tmp_sigma2 = np.ones_like(other.order, dtype=np.float64) * AutoRegModel.default_sigma2
+                _, tmp_S0 = AutoRegModel._arn_to_ssm_param(self=other, sigma2=tmp_sigma2)
+                S0 = block_diag(self.S0, tmp_S0)
+            else:
+                S0 = block_diag(self.S0, other.S0)
 
-        # Call parent class method to obtain general concatenated attributes
-        temp_obj = super().concat_(other, skip_components=skip_components)
+            # Call parent class method to obtain general concatenated attributes
+            temp_obj = super().concat_(other, skip_components=skip_components)
+            new_obj = AutoRegModel(coeff=coeff, sigma2=sigma2, components=temp_obj.components,
+                                   mu0=temp_obj.mu0, S0=S0,
+                                   R=temp_obj.R, y=temp_obj.y, Fs=temp_obj.Fs)  # fill G automatically
 
-        return AutoRegModel(coeff=coeff, sigma2=sigma2, mu0=temp_obj.mu0, Q0=Q0, R=temp_obj.R,
-                            y=temp_obj.y, Fs=temp_obj.Fs, components=temp_obj.components)
+        else:  # concatenation with other classes of SOMATA basic models
+            new_obj = super().concat_(other, skip_components=skip_components)
+
+        return new_obj
 
     def remove_component(self, comp_idx):
         """
         Remove a component from the AutoRegModel object,
         default to remove the left most component
         """
-        super().remove_component(comp_idx=comp_idx)
-        if self.order is not None:
-            self.order = np.delete(self.order, comp_idx)
-        if self.coeff is not None:
-            self.coeff = tuple([self.coeff[x] for x in range(len(self.coeff)) if x != comp_idx])
-        if self.sigma2 is not None:
-            self.sigma2 = np.delete(self.sigma2, comp_idx)
+        if isinstance(comp_idx, list):  # recursive case
+            comp_idx_list = list(np.sort(comp_idx)[::-1])
+            for comp_idx in comp_idx_list:
+                self.remove_component(comp_idx=comp_idx)
+        else:  # base case
+            super().remove_component(comp_idx=comp_idx)
+            if self.order is not None:
+                self.order = np.delete(self.order, comp_idx)
+            if self.coeff is not None:
+                self.coeff = tuple([self.coeff[x] for x in range(len(self.coeff)) if x != comp_idx])
+            if self.sigma2 is not None:
+                self.sigma2 = np.delete(self.sigma2, comp_idx)
 
-        # Set attributes to default values if nothing left
-        self.order = None if len(self.order) == 0 else self.order
-        self.coeff = None if len(self.coeff) == 0 else self.coeff
-        self.sigma2 = None if len(self.sigma2) == 0 else self.sigma2
+            # Set attributes to default values if nothing left
+            self.order = None if len(self.order) == 0 else self.order
+            self.coeff = None if len(self.coeff) == 0 else self.coeff
+            self.sigma2 = None if len(self.sigma2) == 0 else self.sigma2
 
     def fill_components(self, empty_comp=None, deep_copy=True):
         """ Fill the components attribute with AutoRegModel parameters """
-        empty_comp = AutoRegModel() if empty_comp is None else empty_comp
+        empty_comp = empty_comp or AutoRegModel()
         return super().fill_components(empty_comp=empty_comp, deep_copy=deep_copy)
 
     def fill_arn_param(self, F=None, Q=None):
@@ -297,8 +312,8 @@ class AutoRegModel(Ssm):
         matrix Q in the Q_basis block diagonal form
         """
         components = self.components if components is None else components
-        if len(components) == 1 or type(components) is AutoRegModel:
-            order = components.default_G.shape[1] if type(components) is AutoRegModel else \
+        if len(components) == 1 or isinstance(components, AutoRegModel):
+            order = components.default_G.shape[1] if isinstance(components, AutoRegModel) else \
                 components[0].default_G.shape[1]
             E = np.eye(1, dtype=np.float64) if E is None else E
             nsource = E.shape[0]
@@ -422,7 +437,7 @@ class AutoRegModel(Ssm):
 
         # Update the expansion coefficient for each source
         Q_new = torch.zeros_like(Q_ss, dtype=Q_ss.dtype).cuda()
-        if type(Q_basis) is list:  # using non-orthonormal kernel
+        if isinstance(Q_basis, list):  # using non-orthonormal kernel
             Theta = Src.update_theta(Q_ss=Q_ss_block, T=T, Q_basis=Q_basis[1],
                                      nsource=nsource, npart=1, priors=priors)
             Q_new[0:nsource, 0:nsource] = Q_basis[0] @ torch.diag(Theta) @ Q_basis[0].T
@@ -451,11 +466,11 @@ class AutoRegModel(Ssm):
         return mu0
 
     @staticmethod
-    def _m_update_q0(x_0_n=None, P_0_n=None, mu0=None):
-        """ Update initial state covariance -- Q0 """
-        Q0 = np.zeros(P_0_n.shape, dtype=P_0_n.dtype)
-        Q0[0, 0] = P_0_n[0, 0] + x_0_n[0]**2 - 2 * x_0_n[0] * mu0[0, 0] + mu0[0, 0]**2
-        return Q0
+    def _m_update_S0(x_0_n=None, P_0_n=None, mu0=None):
+        """ Update initial state covariance -- S0 """
+        S0 = np.zeros(P_0_n.shape, dtype=P_0_n.dtype)
+        S0[0, 0] = P_0_n[0, 0] + x_0_n[0]**2 - 2 * x_0_n[0] * mu0[0, 0] + mu0[0, 0]**2
+        return S0
 
     @staticmethod
     def _m_update_g(y=None, x_t_n=None, P_t_n=None, h_t=None, C=None, D=None):

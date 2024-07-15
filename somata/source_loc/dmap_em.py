@@ -122,7 +122,7 @@ class SourceLocModel(object):
         return self.ncomp
 
     # EM methods - dynamic source localization with Expectation-Maximization algorithm
-    def learn(self, y, rank=None, SNR=3, R=None, Q=None, mu0=None, Q0=None,
+    def learn(self, y, rank=None, SNR=3, R=None, Q=None, mu0=None, S0=None,
               priors=None, Q_prior_option='MLE', R_prior_option='MLE',
               dtype=torch.float32, update_param=('F', 'Q', 'R'), keep_param=(),
               max_iter=10, logL_thresh=1e-6, show_pbar=True):
@@ -146,7 +146,7 @@ class SourceLocModel(object):
         :param R: observation noise covariance matrix or a scalar
         :param Q: state noise covariance matrix
         :param mu0: initial state mean vector
-        :param Q0: initial state covariance matrix
+        :param S0: initial state covariance matrix
         :param priors: a list of dictionaries specifying priors for each component, if None -> initialize_priors()
         :param Q_prior_option: a string selecting a prior to use for MAP estimating Q
         :param R_prior_option: a string selecting a prior to use for MAP estimating R
@@ -160,13 +160,13 @@ class SourceLocModel(object):
         # Initialize state-space model parameters
         R, rank = self._initialize_r(y=y, rank=rank, R=R, cutoff_frequency=35)
         mu0 = np.zeros((self.nstate, 1), dtype=np.float64) if mu0 is None else mu0
-        Q0, sigma2_Q0 = self._initialize_q0(R=R, rank=rank, Q0=Q0, SNR=SNR, diagonal=True)
-        Q, sigma2_Q = self._initialize_q(Q0=Q0, sigma2_Q0=sigma2_Q0, Q=Q)
+        S0, sigma2_S0 = self._initialize_S0(R=R, rank=rank, S0=S0, SNR=SNR, diagonal=True)
+        Q, sigma2_Q = self._initialize_q(S0=S0, sigma2_S0=sigma2_S0, Q=Q)
 
         # Move attribute matrices to cuda device
         self.Ps = [torch.as_tensor(P, dtype=dtype).cuda() for P in self.Ps]
         self.Ms = [torch.as_tensor(M, dtype=dtype).cuda() for M in self.Ms]
-        if type(self.Q_basis) is list:
+        if isinstance(self.Q_basis, list):
             self.Q_basis = [torch.as_tensor(q, dtype=dtype).cuda() for q in self.Q_basis]
         else:
             self.Q_basis = torch.as_tensor(self.Q_basis, dtype=dtype).cuda()
@@ -174,13 +174,13 @@ class SourceLocModel(object):
         # Initialize E-step using a dictionary of state-space model parameters
         y = torch.as_tensor(y, dtype=dtype).cuda()
         F = self._build_transition_matrix()
-        ssm_params = {'F': F, 'Q': Q, 'mu0': mu0, 'Q0': Q0, 'G': self.G, 'R': R}
+        ssm_params = {'F': F, 'Q': Q, 'mu0': mu0, 'S0': S0, 'G': self.G, 'R': R}
         for elem in ssm_params.keys():  # convert to torch data type for GPU processing
             ssm_params[elem] = torch.as_tensor(ssm_params[elem], dtype=dtype).cuda()
         self.ssm_params = ssm_params
 
         # Initialize priors dictionary for M-step
-        priors = self.initialize_priors(sigma2_Q=sigma2_Q, sigma2_Q0=sigma2_Q0, Q_prior_option=Q_prior_option,
+        priors = self.initialize_priors(sigma2_Q=sigma2_Q, sigma2_S0=sigma2_S0, Q_prior_option=Q_prior_option,
                                         R=ssm_params['R'].detach().clone(), T=y.shape[1],
                                         R_prior_option=R_prior_option) if priors is None else priors
 
@@ -212,13 +212,13 @@ class SourceLocModel(object):
                update_param=('F', 'Q', 'R'), keep_param=()):
         """ M-step in dMAP-EM, exposed for run_em() """
         # Obtain boolean flags of scopes of updates
-        update_FQ, update_mu0Q0 = self._m_step_scope(update_param, keep_param)
+        update_FQ, update_mu0S0 = self._m_step_scope(update_param, keep_param)
 
         # Initialize parameters
         T = y.shape[1]
         if priors is None:
             priors = [None] * self.ncomp
-        elif type(priors) is dict:
+        elif isinstance(priors, dict):
             priors = [priors]  # so that it can be indexed to position 0
 
         # Attempt to skip sums of squares computation in the steady-state version
@@ -229,8 +229,8 @@ class SourceLocModel(object):
         else:
             A, B, C = (None, None, None)
 
-        # Update parameters for each independent component -- F, Q, mu0, Q0 (component specific priors)
-        if update_FQ or update_mu0Q0:
+        # Update parameters for each independent component -- F, Q, mu0, S0 (component specific priors)
+        if update_FQ or update_mu0S0:
             # Initialize variables to store updated parameters
             if 'Q' in update_param and 'Q' not in keep_param:
                 Q_new = torch.zeros(P_t_n.shape, dtype=P_t_n.dtype).cuda()
@@ -239,15 +239,15 @@ class SourceLocModel(object):
 
             if 'mu0' in update_param and 'mu0' not in keep_param:
                 mu0_new = torch.zeros((self.nstate, 1), dtype=x_t_n.dtype).cuda()
-            elif 'Q0' in update_param and 'Q0' not in keep_param:
+            elif 'S0' in update_param and 'S0' not in keep_param:
                 mu0_new = self.ssm_params['mu0']
             else:
                 mu0_new = None
 
-            if 'Q0' in update_param and 'Q0' not in keep_param:
-                Q0_new = torch.zeros(P_t_n.shape, dtype=P_t_n.dtype).cuda()
+            if 'S0' in update_param and 'S0' not in keep_param:
+                S0_new = torch.zeros(P_t_n.shape, dtype=P_t_n.dtype).cuda()
             else:
-                Q0_new = None
+                S0_new = None
 
             # Iterate through independent components
             for ii in range(self.ncomp):
@@ -294,26 +294,26 @@ class SourceLocModel(object):
                         current_component._m_update_mu0_src(x_0_n=x_t_n[start_idx:end_idx, 0],
                                                             nstate=self.comp_nstates[ii])[:, 0]
 
-                if 'Q0' in update_param and 'Q0' not in keep_param:
+                if 'S0' in update_param and 'S0' not in keep_param:
                     x_0_n = x_t_n[start_idx:end_idx, 0][:, None]
                     mu0_tmp = mu0_new[start_idx:end_idx, 0][:, None]
 
                     # Compute the posterior covariance at t=0
-                    Q0_ss = P_t_n + x_0_n @ x_0_n.T - x_0_n @ mu0_tmp.T - mu0_tmp @ x_0_n.T + mu0_tmp @ mu0_tmp.T
+                    S0_ss = P_t_n + x_0_n @ x_0_n.T - x_0_n @ mu0_tmp.T - mu0_tmp @ x_0_n.T + mu0_tmp @ mu0_tmp.T
 
                     # Re-order the covariance into Q_basis block diagonal form
                     P = self.Ps[ii]
-                    Q0_ss = P.T @ Q0_ss @ P
+                    S0_ss = P.T @ S0_ss @ P
 
                     # Re-use the _m_update_q_src method specific to the component subclass
                     # noinspection PyProtectedMember
-                    Q0_new_ii = current_component._m_update_q_src(Q_ss=Q0_ss, T=1, Q_basis=self.Q_basis,
+                    S0_new_ii = current_component._m_update_q_src(Q_ss=S0_ss, T=1, Q_basis=self.Q_basis,
                                                                   nsource=self.nsource,
                                                                   nstate=self.comp_nstates[ii],
                                                                   priors=None)
 
-                    # Re-order Q0_new_ii back into the Kalman form
-                    Q0_new[start_idx:end_idx, start_idx:end_idx] = P @ Q0_new_ii @ P.T
+                    # Re-order S0_new_ii back into the Kalman form
+                    S0_new[start_idx:end_idx, start_idx:end_idx] = P @ S0_new_ii @ P.T
 
         # Update the dictionary of ssm parameters
         if 'F' in update_param and 'F' not in keep_param:
@@ -328,9 +328,9 @@ class SourceLocModel(object):
             # noinspection PyUnboundLocalVariable
             self.ssm_params.update({'mu0': mu0_new})
 
-        if 'Q0' in update_param and 'Q0' not in keep_param:
+        if 'S0' in update_param and 'S0' not in keep_param:
             # noinspection PyUnboundLocalVariable
-            self.ssm_params.update({'Q0': Q0_new})
+            self.ssm_params.update({'S0': S0_new})
 
         if 'R' in update_param and 'R' not in keep_param:
             R_new = self._m_update_r(y=y, x_t_n=x_t_n, P_t_n=P_t_n, T=T, priors=priors[0])
@@ -497,7 +497,7 @@ class SourceLocModel(object):
         # Default scaling on first- and second-order neighbors
         d1 = 0.0 if d1 is None else d1
         d2 = 0.0 if d2 is None else d2
-        approach = 'normalize_neighbors' if approach is None else approach
+        approach = approach or 'normalize_neighbors'
 
         # Compute the pairwise-distance between all sources in use
         if src[0]['dist'] is None:
@@ -631,7 +631,7 @@ class SourceLocModel(object):
         return B
 
     # Initialization methods - initialize parameters for dMAP-EM
-    def initialize_priors(self, sigma2_Q=None, sigma2_Q0=None, Q_prior_option='MLE',
+    def initialize_priors(self, sigma2_Q=None, sigma2_S0=None, Q_prior_option='MLE',
                           R=None, T=None, R_prior_option='MLE'):
         """
         Initialize priors for covariance matrices
@@ -651,11 +651,11 @@ class SourceLocModel(object):
                 prior['theta_ig'] = {'alpha': alpha, 'beta': beta}
             elif Q_prior_option == 'log-sum':
                 """ Sparse L0 log-sum prior (Pirondini et al. 2017) """
-                prior['theta_l0'] = {'gamma': 1 / sigma2_Q0}
+                prior['theta_l0'] = {'gamma': 1 / sigma2_S0}
             elif Q_prior_option == 'exponential':
                 """ Sparse L1 exponential prior (Pirondini et al. 2017) """
                 gamma = np.asarray([-np.log(1 - (x + 0.5) / self.nsource) for x in range(self.nsource)]
-                                   ).sum() / (self.nsource * sigma2_Q0)
+                                   ).sum() / (self.nsource * sigma2_S0)
                 prior['theta_l1'] = {'gamma': gamma}
             elif Q_prior_option == 'jeffreys':
                 """ Sparse Jeffreys prior (Pirondini et al. 2017) """
@@ -692,38 +692,38 @@ class SourceLocModel(object):
 
         return R, rank
 
-    def _initialize_q0(self, R, rank=None, Q0=None, SNR=3, diagonal=True):
+    def _initialize_S0(self, R, rank=None, S0=None, SNR=3, diagonal=True):
         """
-        Initialize state covariance matrix Q0 at t=0
+        Initialize state covariance matrix S0 at t=0
 
         Inputs:
         :param R: observation noise covariance matrix
         :param rank: rank of projected data
         :param SNR: amplitude SNR in scalp measurement
-        :param diagonal: whether to initialize Q0 as a diagonal matrix
+        :param diagonal: whether to initialize S0 as a diagonal matrix
 
         About SNR:
             - MNE uses amplitude SNR of 3, i.e., power SNR of 9
             - Lamus et al. 2012 uses power SNR of 5
             - Pirondini et al. 2017 uses power SNR of 3
         """
-        if Q0 is not None:
-            sigma2_Q0 = np.trace(Q0) / Q0.shape[0]
+        if S0 is not None:
+            sigma2_S0 = np.trace(S0) / S0.shape[0]
 
         else:
             # Lamus et al. 2012
             W, _ = get_whitener(R, rank=rank, proj=self.proj)
             WG = W @ self.G
-            scale_Q0 = rank / np.sum(WG ** 2)
+            scale_S0 = rank / np.sum(WG ** 2)
 
             """
             The above is a more efficient and accurate calculation of the expression:
 
-                scale_Q0 = self.nchannel / np.trace(self.G @ self.G.T @ np.linalg.inv(R))
+                scale_S0 = self.nchannel / np.trace(self.G @ self.G.T @ np.linalg.inv(R))
 
             MNE-Python as of v0.24.1 used the following expression:
 
-                scale_Q0 = np.trace(R) / np.trace(self.G @ self.G.T)
+                scale_S0 = np.trace(R) / np.trace(self.G @ self.G.T)
 
             that is the same as above when data is whitened.
 
@@ -733,24 +733,24 @@ class SourceLocModel(object):
             """
 
             lambda2 = 1 / SNR ** 2
-            sigma2_Q0 = scale_Q0 / lambda2
+            sigma2_S0 = scale_S0 / lambda2
 
-            Q0_blocks = []
+            S0_blocks = []
             for ii in range(self.ncomp):
                 current_component = self.components[ii]
                 if diagonal:
                     E = np.eye(self.nsource, dtype=np.float64)
                 else:
                     E = self.Q_basis @ self.Q_basis.T
-                Q0_tmp = sigma2_Q0 * current_component.get_default_q(components=current_component, E=E)
-                Q0_blocks.append(self.Ps[ii] @ Q0_tmp @ self.Ps[ii].T)  # re-order into the Kalman form
+                S0_tmp = sigma2_S0 * current_component.get_default_q(components=current_component, E=E)
+                S0_blocks.append(self.Ps[ii] @ S0_tmp @ self.Ps[ii].T)  # re-order into the Kalman form
 
-            Q0 = block_diag(*Q0_blocks)
+            S0 = block_diag(*S0_blocks)
 
-        return Q0, sigma2_Q0
+        return S0, sigma2_S0
 
     @staticmethod
-    def _initialize_q(Q0, sigma2_Q0, Q=None, src_scalp_SNR_ratio=0.1):
+    def _initialize_q(S0, sigma2_S0, Q=None, src_scalp_SNR_ratio=0.1):
         """ Initialize state covariance matrix Q """
         if Q is not None:
             sigma2_Q = np.trace(Q) / Q.shape[0]
@@ -758,8 +758,8 @@ class SourceLocModel(object):
         else:
             # Lamus et al. 2012 introduced this heuristic scaling, assuming
             # SNR in the source space is 1/10 of the SNR in scalp measurement
-            Q = src_scalp_SNR_ratio * Q0
-            sigma2_Q = src_scalp_SNR_ratio * sigma2_Q0
+            Q = src_scalp_SNR_ratio * S0
+            sigma2_Q = src_scalp_SNR_ratio * sigma2_S0
 
         return Q, sigma2_Q
 
@@ -856,7 +856,7 @@ class SourceLocModel(object):
         basis for noise covariance, or use the matrix square
         root of the adjacency matrix as a non-orthonormal kernel
         """
-        orthonormal = True if orthonormal is None else orthonormal
+        orthonormal = orthonormal or True
         if orthonormal:
             QR = qr(np.float64(B), pivoting=False)
             return QR[0]  # orthonormal basis, N.B. not eigen-basis!
@@ -906,6 +906,6 @@ class SourceLocModel(object):
     def _m_step_scope(update_param, keep_param):
         """ Sort out the scopes of updates in m_step() """
         # noinspection PyProtectedMember
-        update_FQ, update_mu0Q0 = StateSpaceModel._m_estimate_scope(update_param, keep_param)
+        update_FQ, update_mu0S0 = StateSpaceModel._m_estimate_scope(update_param, keep_param)
         assert 'G' not in update_param, 'Observation matrix should not be updated during source localization.'
-        return update_FQ, update_mu0Q0
+        return update_FQ, update_mu0S0

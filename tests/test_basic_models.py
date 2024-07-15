@@ -5,7 +5,7 @@ Testing functions for basic state-space models in somata/basic_models
 """
 
 from codetiming import Timer
-from test_load_data import _load_data
+from test_load_data import _load_data  # type: ignore
 
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"  # suppress a duplicate OpenMP library error with pytorch on Mac osx-64

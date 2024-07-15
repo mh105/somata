@@ -181,10 +181,15 @@ def viterbi(A, py_x, p1=None, ignore_numerr=False):
 
 
 def logdet(A):
-    """ Computes logdet using Schur complement (Non-torch) """
+    """
+    Computes logdet using Schur complement (Non-torch)
+
+    M = [A B; C D]
+    det(M) = det(A) * det(D - C @ A^-1 @ B)
+    """
     log_det = np.log(A[0, 0])
-    for i in range(A.shape[0]-1):
-        A = A[1:, 1:] - (A[1:, 0] @ A[0, 1:]) / A[0, 0]
+    for _ in range(A.shape[0] - 1):
+        A = A[1:, 1:] - A[1:, 0][:, None] @ A[0, 1:][None, :] / A[0, 0]
         log_det += np.log(A[0, 0])
     return log_det
 
@@ -192,15 +197,86 @@ def logdet(A):
 def logdet_torch(A):
     """ Computes logdet using Schur complement """
     log_det = torch.log(A[0, 0])
-    for i in range(A.shape[0]-1):
+    for _ in range(A.shape[0] - 1):
         A = A[1:, 1:] - torch.matmul(torch.unsqueeze(A[1:, 0], -1),
-                                     torch.unsqueeze(A[0, 1:], 0))/A[0, 0]
+                                     torch.unsqueeze(A[0, 1:], 0)) / A[0, 0]
         log_det += torch.log(A[0, 0])
     return log_det
 
 
-# noinspection PyUnusedLocal
-def kalman(F, Q, mu0, Q0, G, R, y, R_weights=None, skip_interp=True):
+def apply_R_weights(R, q, T, R_weights=None):
+    """ Apply time-varying weights on the observation noise covariance matrix """
+    for R_val in [np.diag(R), np.linalg.eigvals(R)]:
+        assert (R_val > 0.).all(), 'R must be positive definite.'
+
+    if R_weights is None:
+        R = R[:, :, None] * np.ones((q, q, T))
+    else:  # (index 1 corresponds to t=1, etc.)
+        R = R[:, :, None] * np.reshape(np.tile(R_weights, (q ** 2, 1)), (q, q, T))
+        R[np.isnan(R)] = 0.  # when there was 0 * inf = nan, set it to be 0
+
+    return R
+
+
+def kalman_filter(F, Q, mu0, S0, G, R, y):
+    """
+    This is the classical Kalman filter only without smoothing.
+    Multivariate observation data y is supported. This implementation runs
+    the kalman filtering on CPU. This function has been heavily optimized
+    for matrix computations in exchange for more intense memory use
+    and arcane syntax. The bare minimum of the Kalman filter is implemented
+    with the forward pass only and no extra outputs. This is created to
+    facilitate the use of the Kalman filter in real-time applications.
+
+    Reference:
+        Shumway, R. H., & Stoffer, D. S. (1982). An approach to time
+        series smoothing and forecasting using the EM algorithm.
+        Journal of time series analysis, 3(4), 253-264.
+
+        Jazwinski, A. H. (2007). Stochastic processes and filtering
+        theory. Courier Corporation.
+
+    Inputs
+    :param F: transition matrix
+    :param Q: state noise covariance matrix
+    :param mu0: initial state mean vector
+    :param S0: initial state covariance matrix
+    :param G: observation matrix
+    :param R: observation noise covariance matrix
+    :param y: observed data (can be multivariate)
+    :return: x_t_t, P_t_t
+    """
+    # Vector dimensions
+    _, T = y.shape
+    p = mu0.shape[0]
+
+    # Kalman filtering (forward pass)
+    x_t_t = np.zeros((p, T+1))  # (index 1 corresponds to t=0, etc.)
+    P_t_t = np.zeros((p, p, T+1))
+
+    # Initialize
+    x_t_t[:, 0] = np.squeeze(mu0, axis=1)  # x_0_0
+    P_t_t[:, :, 0] = S0  # P_0_0
+
+    # Recursion of forward pass
+    for ii in range(1, T+1):  # t=1 -> t=T
+        # One-step prediction
+        x_t_tmin1 = F @ x_t_t[:, ii-1]
+        P_t_tmin1 = F @ P_t_t[:, :, ii-1] @ F.T + Q
+
+        # Update
+        GP = G @ P_t_tmin1
+        Sigma = GP @ G.T + R[:, :, ii-1]
+        invSigma = inverse(Sigma, approach='gaussian')
+        dy = y[:, ii-1] - G @ x_t_tmin1
+        K_t = GP.T @ invSigma
+        x_t_t[:, ii] = x_t_tmin1 + K_t @ dy
+        P_t_t[:, :, ii] = P_t_tmin1 - K_t @ GP
+
+    return x_t_t, P_t_t
+
+
+def kalman(F, Q, mu0, S0, G, R, y, R_weights=None, skip_interp=True):
     """
     This is the classical Kalman filter and fixed-interval smoother.
     Multivariate observation data y is supported. This implementation runs
@@ -224,7 +300,7 @@ def kalman(F, Q, mu0, Q0, G, R, y, R_weights=None, skip_interp=True):
     :param F: transition matrix
     :param Q: state noise covariance matrix
     :param mu0: initial state mean vector
-    :param Q0: initial state covariance matrix
+    :param S0: initial state covariance matrix
     :param G: observation matrix
     :param R: observation noise covariance matrix
     :param y: observed data (can be multivariate)
@@ -239,11 +315,8 @@ def kalman(F, Q, mu0, Q0, G, R, y, R_weights=None, skip_interp=True):
     approach_y = 'svd' if q >= 5 else 'gaussian'
     approach_x = 'svd' if p >= 5 else 'gaussian'
 
-    if R_weights is None:
-        R = R[:, :, None] * np.ones((q, q, T))
-    else:  # (index 1 corresponds to t=1, etc.)
-        R = R[:, :, None] * np.reshape(np.tile(R_weights, (q ** 2, 1)), (q, q, T))
-        R[np.isnan(R)] = 0  # when there was 0 * inf = nan, set it to be 0
+    # Expand observation noise R to all time points
+    R = apply_R_weights(R, q, T, R_weights=R_weights)
 
     # Kalman filtering (forward pass)
     x_t_tmin1 = np.zeros((p, T+1))  # (index 1 corresponds to t=0, etc.)
@@ -256,7 +329,7 @@ def kalman(F, Q, mu0, Q0, G, R, y, R_weights=None, skip_interp=True):
 
     # Initialize
     x_t_t[:, 0] = np.squeeze(mu0, axis=1)  # x_0_0
-    P_t_t[:, :, 0] = Q0  # P_0_0
+    P_t_t[:, :, 0] = S0  # P_0_0
 
     # Recursion of forward pass
     for ii in range(1, T+1):  # t=1 -> t=T
@@ -297,7 +370,7 @@ def kalman(F, Q, mu0, Q0, G, R, y, R_weights=None, skip_interp=True):
     return x_t_n, P_t_n, P_t_tmin1_n, logL, x_t_t, P_t_t, K_t, x_t_tmin1, P_t_tmin1, fy_t_interp
 
 
-def djkalman(F, Q, mu0, Q0, G, R, y, R_weights=None, skip_interp=True):
+def djkalman(F, Q, mu0, S0, G, R, y, R_weights=None, skip_interp=True):
     """
     This is the [De Jong 1989] Kalman filter and fixed-interval smoother.
     Multivariate observation data y is supported. This implementation runs
@@ -321,7 +394,7 @@ def djkalman(F, Q, mu0, Q0, G, R, y, R_weights=None, skip_interp=True):
     :param F: transition matrix
     :param Q: state noise covariance matrix
     :param mu0: initial state mean vector
-    :param Q0: initial state covariance matrix
+    :param S0: initial state covariance matrix
     :param G: observation matrix
     :param R: observation noise covariance matrix
     :param y: observed data (can be multivariate)
@@ -335,11 +408,8 @@ def djkalman(F, Q, mu0, Q0, G, R, y, R_weights=None, skip_interp=True):
     p = mu0.shape[0]
     approach_y = 'svd' if q >= 5 else 'gaussian'
 
-    if R_weights is None:
-        R = R[:, :, None] * np.ones((q, q, T))
-    else:  # (index 1 corresponds to t=1, etc.)
-        R = R[:, :, None] * np.reshape(np.tile(R_weights, (q ** 2, 1)), (q, q, T))
-        R[np.isnan(R)] = 0  # when there was 0 * inf = nan, set it to be 0
+    # Expand observation noise R to all time points
+    R = apply_R_weights(R, q, T, R_weights=R_weights)
 
     # Kalman filtering (forward pass)
     x_t_tmin1 = np.zeros((p, T+2))  # (index 1 corresponds to t=0, etc.)
@@ -353,7 +423,7 @@ def djkalman(F, Q, mu0, Q0, G, R, y, R_weights=None, skip_interp=True):
 
     # Initialize
     x_t_t = mu0  # x_0_0, initialized only to keep return outputs consistent
-    P_t_t = Q0  # P_0_0, initialized only to keep return outputs consistent
+    P_t_t = S0  # P_0_0, initialized only to keep return outputs consistent
     x_t_tmin1[:, 1] = F @ np.squeeze(x_t_t, axis=1)  # x_1_0 (W_0*beta in De Jong 1989)
     P_t_tmin1[:, :, 1] = F @ P_t_t @ F.T + Q  # P_1_0 (V_0 in De Jong 1989)
 
@@ -427,7 +497,7 @@ def djkalman(F, Q, mu0, Q0, G, R, y, R_weights=None, skip_interp=True):
     return x_t_n, P_t_n, P_t_tmin1_n, logL, x_t_t, P_t_t, K_t, x_t_tmin1, P_t_tmin1, fy_t_interp
 
 
-def djkalman_conv_torch(F, Q, mu0, Q0, G, R, y, conv_steps=100, dtype=torch.float32):
+def djkalman_conv_torch(F, Q, mu0, S0, G, R, y, conv_steps=100, dtype=torch.float32):
     """
     A convergent version of djkalman() implemented in Pytorch
 
@@ -453,7 +523,7 @@ def djkalman_conv_torch(F, Q, mu0, Q0, G, R, y, conv_steps=100, dtype=torch.floa
         time-invariant covariance matrix for the error in transition equation.
     mu0: Nx x 1
         initial state mean vector.
-    Q0: Nx x Nx
+    S0: Nx x Nx
         covariance matrix of the initial state vector.
     G: Ny x Nx matrix
         time-invariant measurement matrix in measurement equation.
@@ -505,7 +575,7 @@ def djkalman_conv_torch(F, Q, mu0, Q0, G, R, y, conv_steps=100, dtype=torch.floa
 
     # Initialize
     x_t_tmin1[:, 1] = torch.matmul(F, mu0)[:, 0]  # x_1_0 (W_0*beta in De Jong 1989)
-    P_t_tmin1 = torch.matmul(torch.matmul(F, Q0), F.T) + Q  # P_1_0 (V_0 in De Jong 1989)
+    P_t_tmin1 = torch.matmul(torch.matmul(F, S0), F.T) + Q  # P_1_0 (V_0 in De Jong 1989)
 
     # Recursion of forward pass until convergence of predicted covariance matrix
     for ii in range(1, conv_steps+1):  # t=1 -> t=conv_steps

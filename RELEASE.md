@@ -1,5 +1,20 @@
 # Release log
 
+## 0.5.1
+*July 2024*
+
+#### New features
+
+- Add a phase amplitude coupling (PAC) analysis module
+- Add a new class to perform decimated EM learning with state-space models
+
+#### Closed issues
+
+- Fix an issue with log likelihood calculations with multivariate observed data y
+- Rename initial state noise covariance matrix at time point t=0 from Q0 to S0
+- Correctly unfill components when calling m_estimate on Ssm class objects
+- Fix how different basic models can be concatenated together (e.g., Arn and Osc)
+
 ## 0.4.1
 *March 2024*
 
@@ -9,7 +24,7 @@
 - Introduce DecomposedOscillatorModel to supersede the iOsc algorithm in most applications
 - Rename iterative_oscillator module to oscillator_search
 - Introduce diagnostic plotting and statistical tests for analyzing residuals
-- Introduce dynamic source localization with oscillator models utilizing GPU processing
+- Introduce dynamic source localization using oscillator models with GPU acceleration
 
 #### Closed issues
 

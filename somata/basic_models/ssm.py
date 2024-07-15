@@ -5,6 +5,7 @@ ssm module contains a general state-space model class used in SOMATA
 """
 
 from somata.exact_inference import kalman, djkalman, inverse
+from somata.utils import estimate_r
 import numpy as np
 import numbers
 from collections.abc import Iterable
@@ -34,22 +35,22 @@ class StateSpaceModel(object):
     F = None
     Q = None
     mu0 = None
-    Q0 = None
+    S0 = None
     G = None
     R = None
     y = None
     Fs = None
-    stackable = ('F', 'Q', 'mu0', 'Q0', 'G', 'R')
+    stackable = ('F', 'Q', 'mu0', 'S0', 'G', 'R')
     default_G = None
 
-    def __init__(self, components=None, F=None, Q=None, mu0=None, Q0=None, G=None, R=None, y=None, Fs=None):
+    def __init__(self, components=None, F=None, Q=None, mu0=None, S0=None, G=None, R=None, y=None, Fs=None):
         """
         Constructor method for StateSpaceModel class
         :param components: a list of independent components in the model
         :param F: transition matrix
         :param Q: state noise covariance matrix
         :param mu0: initial state mean vector
-        :param Q0: initial state covariance matrix
+        :param S0: initial state covariance matrix
         :param G: observation matrix (row major)
         :param R: observation noise covariance matrix
         :param y: observed data (row major, can be multivariate)
@@ -59,8 +60,7 @@ class StateSpaceModel(object):
         self.F = self._process_constructor_input(F)
         self.Q = self._process_constructor_input(Q)
         self.mu0 = self._process_constructor_input(mu0)
-        self.Q0 = self._process_constructor_input(Q0)
-        self.R = self._process_constructor_input(R)
+        self.S0 = self._process_constructor_input(S0)
         self.y = self._must_be_row(self._process_constructor_input(y))
         self.Fs = np.float64(Fs) if Fs is not None else None
 
@@ -74,8 +74,9 @@ class StateSpaceModel(object):
         else:
             self._initialize_from_components(components)
 
-        # Initialize observation matrix
+        # Initialize observation matrix and noise
         self._initialize_observation_matrix(G)
+        self._initialize_observation_noise(R)
 
         # Check all dimensions
         self._check_dimensions()
@@ -101,8 +102,8 @@ class StateSpaceModel(object):
                                                         in [self.Q]][0]) + \
                     "{0:3}.shape = {1: <10} ".format("mu0", [str(x.shape) if x is not None else 'None' for x
                                                              in [self.mu0]][0]) + \
-                    "{0:3}.shape = {1}\n ".format("Q0", [str(x.shape) if x is not None else 'None' for x
-                                                         in [self.Q0]][0]) + \
+                    "{0:3}.shape = {1}\n ".format("S0", [str(x.shape) if x is not None else 'None' for x
+                                                         in [self.S0]][0]) + \
                     "{0:3}.shape = {1: <10} ".format("G", [str(x.shape) if x is not None else 'None' for x
                                                            in [self.G]][0]) + \
                     "{0:3}.shape = {1}\n ".format("R", [str(x.shape) if x is not None else 'None' for x
@@ -111,6 +112,11 @@ class StateSpaceModel(object):
                                                            in [self.y]][0]) + \
                     "Fs = {0}\n ".format([str(x) + ' Hz' if x is not None else 'None' for x in [self.Fs]][0])
         return print_str
+
+    def ssm(self):
+        """ Create a StateSpaceModel object with the same attributes as the OscillatorModel object """
+        return StateSpaceModel(components=self.components, F=self.F, Q=self.Q, mu0=self.mu0, S0=self.S0,
+                               G=self.G, R=self.R, y=self.y, Fs=self.Fs)
 
     def __len__(self):
         return self.nmodel
@@ -158,7 +164,7 @@ class StateSpaceModel(object):
         """
         if 0 in check_scope:
             # check the dimension of states
-            check_state_tuple = (self.F, self.Q, self.mu0, self.Q0)
+            check_state_tuple = (self.F, self.Q, self.mu0, self.S0)
             check_state_n = len(check_state_tuple)
             check_state_result = np.zeros(check_state_n, dtype=np.int_)
             for ii in range(check_state_n):
@@ -211,7 +217,7 @@ class StateSpaceModel(object):
         third axis is reserved for stacking different models
         """
         # Different components and y should reside in different instances, therefore not stackable
-        assert self.components is None or type(self.components) is list, \
+        assert self.components is None or isinstance(self.components, list), \
             'Component structure should not be stacked in a single StateSpaceModel instance.'
         assert self.y is None or len(self.y.shape) < 3, \
             'Observed data y should not be stacked in a single StateSpaceModel instance.'
@@ -275,7 +281,7 @@ class StateSpaceModel(object):
         new_obj = deepcopy(self)
         if attrs is None:
             attrs = ('components', 'y', 'Fs') + self.stackable
-        elif type(attrs) is not tuple:
+        elif not isinstance(attrs, tuple):
             attrs = tuple(attrs)
 
         for attr_name in attrs:
@@ -359,7 +365,7 @@ class StateSpaceModel(object):
         try:  # this has to stay here to avoid circular import before class definitions
             from .osc import OscillatorModel
         except (ImportError, ModuleNotFoundError):
-            from osc import OscillatorModel
+            from somata import OscillatorModel
 
         assert (self.nstate % 2) == 0, 'Cannot default to Osc components with odd nstate.'
         self.ncomp = self.nstate // 2
@@ -373,7 +379,7 @@ class StateSpaceModel(object):
         try:  # this has to stay here to avoid circular import before class definitions
             from .arn import AutoRegModel
         except (ImportError, ModuleNotFoundError):
-            from arn import AutoRegModel
+            from somata import AutoRegModel
 
         # F and Q parameters must be specified
         assert self.F is not None, 'F parameter is not available to form Arn components.'
@@ -395,15 +401,15 @@ class StateSpaceModel(object):
             coeff = self.F[start_idx, start_idx:end_idx]
             sigma2 = self.Q[start_idx, start_idx]
             mu0 = self.mu0[start_idx:end_idx] if self.mu0 is not None else None
-            Q0 = self.Q[start_idx, start_idx] if self.Q0 is not None else None
-            self.components.append(AutoRegModel(coeff=coeff, sigma2=sigma2, mu0=mu0, Q0=Q0))
+            S0 = self.Q[start_idx, start_idx] if self.S0 is not None else None
+            self.components.append(AutoRegModel(coeff=coeff, sigma2=sigma2, mu0=mu0, S0=S0))
 
     def _auto_populate_gen_components(self):
         """ Initialize with a single general state-space model during constructor """
         try:  # this has to stay here to avoid circular import before class definitions
             from .gen import GeneralSSModel
         except (ImportError, ModuleNotFoundError):
-            from gen import GeneralSSModel
+            from somata import GeneralSSModel
 
         if self.nstate > 0:
             self.ncomp = 1
@@ -425,7 +431,7 @@ class StateSpaceModel(object):
             if current_component.ncomp <= 1:
                 comp_list.append(current_component)
             else:
-                assert type(current_component.components) is list, 'Invalid components attribute.'
+                assert isinstance(current_component.components, list), 'Invalid components attribute.'
                 assert (np.asarray([x.ncomp for x in current_component.components]) <= 1).all(), \
                     'Components should not have nested multiple components in them.'
                 comp_list += current_component.components
@@ -440,7 +446,7 @@ class StateSpaceModel(object):
             concat_model = StateSpaceModel.concat_(concat_model, self.components[n], skip_components=True)
 
         # Fill in model parameters if available from components
-        self._setattr_when_not_none(concat_model, ('F', 'Q', 'mu0', 'Q0', 'R', 'Fs'))
+        self._setattr_when_not_none(concat_model, ('F', 'Q', 'mu0', 'S0', 'R', 'Fs'))
 
         # Fill in observed data if available from components
         self._check_observed_data(concat_model)
@@ -448,7 +454,7 @@ class StateSpaceModel(object):
 
     def _setattr_when_not_none(self, other, attrs):
         """ Update an instance attribute when the other model has non-empty values """
-        attrs = tuple(attrs) if type(attrs) is not tuple else attrs
+        attrs = tuple(attrs) if not isinstance(attrs, tuple) else attrs
         for attr_name in attrs:
             self_attr = getattr(self, attr_name)
             other_attr = getattr(other, attr_name)
@@ -463,13 +469,21 @@ class StateSpaceModel(object):
         """ Initialize the observation matrix instance attribute during constructor """
         if G is None:
             if self.ncomp > 0:
-                nchannel = self.y.shape[0] if self.y is not None else 1  # at least one observation channel
+                nchannel = self.y.shape[0] if self.y is not None else 1  # default to one observation channel
                 self.G = np.tile(self._must_be_row(self._process_constructor_input(
                     np.hstack([x.default_G for x in self.components]))), (nchannel, 1))
             else:
                 self.G = None
         else:
             self.G = self._must_be_row(self._process_constructor_input(G))
+
+    def _initialize_observation_noise(self, R):
+        """ Initialize the observation noise covariance matrix during constructor """
+        # Update R if not provided but can be estimated from y and Fs
+        if R is None and self.y is not None and self.Fs is not None:
+            R = estimate_r(y=self.y, Fs=self.Fs, freq_cutoff=self.Fs / 2 - 20)
+
+        self.R = self._process_constructor_input(R)
 
     def stack_attr(self, attr_name, new_attr):
         """ Stack new_attr into the third axis of an instance attribute """
@@ -515,27 +529,34 @@ class StateSpaceModel(object):
         Append an object to an existing StateSpaceModel object,
         by calling concat_() and copying over attributes
         """
-        temp_obj = self.concat_(other)
-        attr_dict = self.__dict__
-        for attr in attr_dict.keys():
-            setattr(self, attr, getattr(temp_obj, attr))
+        self._setattr_for_append(temp_obj=self.concat_(other))
 
     def rappend(self, other):
         """
         Append an existing StateSpaceModel object to an object,
-        by calling concat_() and copying over attributes
+        positioned on the right side, i.e., ohter is appended from
+        the left, by calling concat_() and copying over attributes
         """
-        temp_obj = other.concat_(self)
-        attr_dict = self.__dict__
-        for attr in attr_dict.keys():
-            setattr(self, attr, getattr(temp_obj, attr))
+        self._setattr_for_append(temp_obj=other.concat_(self))
+
+    def _setattr_for_append(self, temp_obj):
+        """
+        Copy over attributes from temp_obj to self for appending.
+        If self and other are of the same type, modify attributes
+        in place, otherwise, raise an exception
+        """
+        if self.type == temp_obj.type:
+            for attr in self.__dict__.keys():
+                setattr(self, attr, getattr(temp_obj, attr))
+        else:
+            raise TypeError('Cannot append two SOMATA models of different classes. Use concat_() instead.')
 
     def concat_(self, other, skip_components=False):
         """
         Join two StateSpaceModel objects together by concatenating the
         components, and return a new object with the new total number
-        of components. The mutable attribute components has maintained
-        memory addresses
+        of components. The mutable attribute components has new memory
+        addresses for each component
         """
         # If both have observed data, they should be identical
         self._check_observed_data(other)
@@ -547,13 +568,23 @@ class StateSpaceModel(object):
         else:
             R = self._return_not_none(self.R, other.R)
 
-        # Set up the new components attribute without maintaining memory addresses using deepcopy()
+        # Fill components with parameters if concatenating with different classes of SOMATA basic models
+        if self.type != other.type and not skip_components:
+            components_prefill_self = self.fill_components()
+            components_prefill_other = other.fill_components()
+
+        # Set up the new components attribute using deepcopy(), without maintaining memory addresses
         new_comp = [None] * (self.ncomp + other.ncomp)
         if len(new_comp) == 0 or skip_components:
             new_comp = None
         else:
             new_comp[:self.ncomp] = [None] * self.ncomp if self.components is None else deepcopy(self.components)
             new_comp[self.ncomp:] = [None] * other.ncomp if other.components is None else deepcopy(other.components)
+
+        # Revert any changes made to the components attribute of the original objects
+        if self.type != other.type and not skip_components:
+            self.unfill_components(components_prefill_self)
+            other.unfill_components(components_prefill_other)
 
         # Configure the rest of attributes that are immutable
         # F
@@ -586,50 +617,77 @@ class StateSpaceModel(object):
         else:
             mu0 = np.vstack([self.mu0, other.mu0])
 
-        # Q0
-        if self.Q0 is None and other.Q0 is None:
-            Q0 = None
-        elif self.Q0 is None:
-            Q0 = block_diag(self.Q, other.Q0) if self.Q is not None else \
-                block_diag(np.empty((self.nstate, self.nstate), dtype=object), other.Q0)
+        # S0
+        if self.S0 is None and other.S0 is None:
+            S0 = None
+        elif self.S0 is None:
+            S0 = block_diag(self.Q, other.S0) if self.Q is not None else \
+                block_diag(np.empty((self.nstate, self.nstate), dtype=object), other.S0)
         elif other.mu0 is None:
-            Q0 = block_diag(self.Q0, other.Q) if other.Q is not None else \
-                block_diag(self.Q0, np.empty((other.nstate, other.nstate), dtype=object))
+            S0 = block_diag(self.S0, other.Q) if other.Q is not None else \
+                block_diag(self.S0, np.empty((other.nstate, other.nstate), dtype=object))
         else:
-            Q0 = block_diag(self.Q0, other.Q0)
+            S0 = block_diag(self.S0, other.S0)
 
-        return StateSpaceModel(components=new_comp, F=F, Q=Q, mu0=mu0, Q0=Q0, R=R, y=y, Fs=Fs)  # fill G automatically
+        # G
+        if self.G is None and other.G is None:
+            G = None
+        else:
+            nchannel = y.shape[0] if y is not None else 1  # default to one observation channel
+
+            if self.G is None:
+                assert self.ncomp > 0, 'Cannot concatenate when self has no components.'
+                G_self = np.tile(self._must_be_row(self._process_constructor_input(
+                        np.hstack([x.default_G for x in self.components]))), (nchannel, 1))
+            else:
+                G_self = self.G
+
+            if other.G is None:
+                assert other.ncomp > 0, 'Cannot concatenate when other has no components.'
+                G_other = np.tile(other._must_be_row(other._process_constructor_input(
+                    np.hstack([x.default_G for x in other.components]))), (nchannel, 1))
+            else:
+                G_other = other.G
+
+            G = np.hstack([G_self, G_other])
+
+        return StateSpaceModel(components=new_comp, F=F, Q=Q, mu0=mu0, S0=S0, G=G, R=R, y=y, Fs=Fs)
 
     def remove_component(self, comp_idx):
         """ Remove a component from the Ssm object """
-        start_idx = sum(self.comp_nstates[:comp_idx])
-        end_idx = sum(self.comp_nstates[:comp_idx+1])
-        slice_idx = range(start_idx, end_idx)
-        self.nstate -= self.comp_nstates[comp_idx]
-        self.ncomp -= 1
-        _ = self.comp_nstates.pop(comp_idx)
-        _ = self.components.pop(comp_idx)
-        if self.F is not None:
-            self.F = np.delete(self.F, slice_idx, axis=0)
-            self.F = np.delete(self.F, slice_idx, axis=1)
-        if self.Q is not None:
-            self.Q = np.delete(self.Q, slice_idx, axis=0)
-            self.Q = np.delete(self.Q, slice_idx, axis=1)
-        if self.mu0 is not None:
-            self.mu0 = np.delete(self.mu0, slice_idx, axis=0)
-        if self.Q0 is not None:
-            self.Q0 = np.delete(self.Q0, slice_idx, axis=0)
-            self.Q0 = np.delete(self.Q0, slice_idx, axis=1)
-        if self.G is not None:
-            self.G = np.delete(self.G, slice_idx, axis=1)
+        if isinstance(comp_idx, list):  # recursive case
+            comp_idx_list = list(np.sort(comp_idx)[::-1])
+            for comp_idx in comp_idx_list:
+                self.remove_component(comp_idx=comp_idx)
+        else:  # base case
+            start_idx = sum(self.comp_nstates[:comp_idx])
+            end_idx = sum(self.comp_nstates[:comp_idx+1])
+            slice_idx = range(start_idx, end_idx)
+            self.nstate -= self.comp_nstates[comp_idx]
+            self.ncomp -= 1
+            _ = self.comp_nstates.pop(comp_idx)
+            _ = self.components.pop(comp_idx)
+            if self.F is not None:
+                self.F = np.delete(self.F, slice_idx, axis=0)
+                self.F = np.delete(self.F, slice_idx, axis=1)
+            if self.Q is not None:
+                self.Q = np.delete(self.Q, slice_idx, axis=0)
+                self.Q = np.delete(self.Q, slice_idx, axis=1)
+            if self.mu0 is not None:
+                self.mu0 = np.delete(self.mu0, slice_idx, axis=0)
+            if self.S0 is not None:
+                self.S0 = np.delete(self.S0, slice_idx, axis=0)
+                self.S0 = np.delete(self.S0, slice_idx, axis=1)
+            if self.G is not None:
+                self.G = np.delete(self.G, slice_idx, axis=1)
 
-        # Set attributes to default values if nothing left
-        self.comp_nstates = 0 if len(self.comp_nstates) == 0 else self.comp_nstates
-        self.components = None if len(self.components) == 0 else self.components
-        self.F = None if len(self.F) == 0 else self.F
-        self.Q = None if len(self.Q) == 0 else self.Q
-        self.mu0 = None if len(self.mu0) == 0 else self.mu0
-        self.Q0 = None if len(self.Q0) == 0 else self.Q0
+            # Set attributes to default values if nothing left
+            self.comp_nstates = 0 if len(self.comp_nstates) == 0 else self.comp_nstates
+            self.components = None if len(self.components) == 0 else self.components
+            self.F = None if len(self.F) == 0 else self.F
+            self.Q = None if len(self.Q) == 0 else self.Q
+            self.mu0 = None if len(self.mu0) == 0 else self.mu0
+            self.S0 = None if len(self.S0) == 0 else self.S0
 
     def fill_components(self, empty_comp=None, deep_copy=True):
         """
@@ -638,7 +696,7 @@ class StateSpaceModel(object):
         so it remains mutable (be careful when you slice-alter y)
         """
         # Create an empty component instance
-        empty_comp = StateSpaceModel() if empty_comp is None else empty_comp
+        empty_comp = empty_comp or StateSpaceModel()
 
         # Save the current components in case we need to revert to unfilled status
         components_prefill = deepcopy(self.components)
@@ -671,12 +729,12 @@ class StateSpaceModel(object):
                 else:
                     mu0 = getattr(self, 'mu0')[start_idx:end_idx]
                 setattr(current_component, 'mu0', mu0)
-            if getattr(self, 'Q0') is not None:
+            if getattr(self, 'S0') is not None:
                 if deep_copy:
-                    Q0 = deepcopy(getattr(self, 'Q0')[start_idx:end_idx, start_idx:end_idx])
+                    S0 = deepcopy(getattr(self, 'S0')[start_idx:end_idx, start_idx:end_idx])
                 else:
-                    Q0 = getattr(self, 'Q0')[start_idx:end_idx, start_idx:end_idx]
-                setattr(current_component, 'Q0', Q0)
+                    S0 = getattr(self, 'S0')[start_idx:end_idx, start_idx:end_idx]
+                setattr(current_component, 'S0', S0)
             if getattr(self, 'G') is not None:
                 if deep_copy:
                     G = deepcopy(getattr(self, 'G')[:, start_idx:end_idx])
@@ -704,7 +762,6 @@ class StateSpaceModel(object):
 
     def unfill_components(self, components_prefill):
         """ Unfill components to a prefill state """
-        # Save the current components in case we need to revert to unfilled status
         assert len(self.components) == len(components_prefill), 'Different numbers of components during unfill.'
         for ii in range(self.ncomp):
             attr_dict = components_prefill[ii].__dict__
@@ -728,10 +785,12 @@ class StateSpaceModel(object):
         """
         if a is None:
             return a
-        elif type(a) is tuple:
+        elif isinstance(a, tuple):
             return np.asanyarray(np.dstack(a), dtype=np.float64)
         else:
-            a = deepcopy(np.asanyarray(a, dtype=np.float64))  # break the link to input data memory address
+            # always break the link to input data memory address
+            a = deepcopy(np.asanyarray(a, dtype=np.float64))
+
             if len(a.shape) == 0:  # always promote to (r,c) 2D arrays
                 return a[None, None]
             elif len(a.shape) == 1:
@@ -793,7 +852,7 @@ class StateSpaceModel(object):
 
         y = self.y if y is None else y
         x_t_n, P_t_n, P_t_tmin1_n, logL, x_t_t, P_t_t, K_t, x_t_tmin1, P_t_tmin1, fy_t_interp = kalman(
-            F=self.F, Q=self.Q, mu0=self.mu0, Q0=self.Q0, G=self.G, R=self.R, y=y, R_weights=R_weights,
+            F=self.F, Q=self.Q, mu0=self.mu0, S0=self.S0, G=self.G, R=self.R, y=y, R_weights=R_weights,
             skip_interp=skip_interp)
 
         if seterr is not None:
@@ -817,7 +876,7 @@ class StateSpaceModel(object):
 
         y = self.y if y is None else y
         x_t_n, P_t_n, P_t_tmin1_n, logL, x_t_t, P_t_t, K_t, x_t_tmin1, P_t_tmin1, fy_t_interp = djkalman(
-            F=self.F, Q=self.Q, mu0=self.mu0, Q0=self.Q0, G=self.G, R=self.R, y=y, R_weights=R_weights,
+            F=self.F, Q=self.Q, mu0=self.mu0, S0=self.S0, G=self.G, R=self.R, y=y, R_weights=R_weights,
             skip_interp=skip_interp)
 
         if seterr is not None:
@@ -882,7 +941,7 @@ class StateSpaceModel(object):
     # noinspection PyUnusedLocal
     def m_estimate(self, y=None, x_t_n=None, P_t_n=None, P_t_tmin1_n=None, h_t=None, logL=None,
                    priors=None, A=None, B=None, C=None, T=None, force_ABC=False,
-                   update_param=('F', 'Q', 'mu0', 'Q0', 'G', 'R'), keep_param=(),
+                   update_param=('F', 'Q', 'mu0', 'S0', 'G', 'R'), keep_param=(),
                    return_dict=None):
         """
         Maximum likelihood or Maximum a posteriori estimation to update
@@ -920,14 +979,14 @@ class StateSpaceModel(object):
         :param return_dict: None -> no return, True -> return dict, False -> return tuple of variables
         """
         # Obtain boolean flags of scopes of updates
-        update_FQ, update_mu0Q0G = self._m_estimate_scope(update_param, keep_param)
+        update_FQ, update_mu0S0G = self._m_estimate_scope(update_param, keep_param)
 
         # Initialize parameters
         y = self.y if y is None else y
         if priors is None:
             priors = [None] * self.ncomp
-        elif type(priors) is dict:
-            priors = [priors]  # so that it can be indexed to position 0
+        elif isinstance(priors, dict):
+            priors = [priors]  # so that it can be indexed at position 0
 
         # Attempt to skip sums of squares computation
         if update_FQ or force_ABC:
@@ -941,8 +1000,8 @@ class StateSpaceModel(object):
             h_t_length = T if T is not None else y.shape[1]
             h_t = np.ones(h_t_length, dtype=np.float64)  # default responsibility is 1 for all timepoints
 
-        # Update parameters for each independent component -- F, Q, mu0, Q0, G (component specific priors)
-        if update_FQ or update_mu0Q0G:
+        # Update parameters for each independent component -- F, Q, mu0, S0, G (component specific priors)
+        if update_FQ or update_mu0S0G:
             for ii in range(self.ncomp):  # iterate through components
                 current_component: StateSpaceModel = self.components[ii]  # typehint to superclass to be flexible
                 start_idx = sum(self.comp_nstates[:ii])
@@ -969,9 +1028,9 @@ class StateSpaceModel(object):
                     self.mu0[start_idx:end_idx, 0] = \
                         current_component._m_update_mu0(x_0_n=x_t_n[start_idx:end_idx, 0])[:, 0]
 
-                if 'Q0' in update_param and 'Q0' not in keep_param:
-                    self.Q0[start_idx:end_idx, start_idx:end_idx] = \
-                        current_component._m_update_q0(x_0_n=x_t_n[start_idx:end_idx, 0],
+                if 'S0' in update_param and 'S0' not in keep_param:
+                    self.S0[start_idx:end_idx, start_idx:end_idx] = \
+                        current_component._m_update_S0(x_0_n=x_t_n[start_idx:end_idx, 0],
                                                        P_0_n=P_t_n[start_idx:end_idx, start_idx:end_idx, 0],
                                                        mu0=self.mu0[start_idx:end_idx, 0][:, None])
 
@@ -990,10 +1049,10 @@ class StateSpaceModel(object):
         if return_dict is None:
             pass
         elif return_dict:
-            return {'F': self.F, 'Q': self.Q, 'mu0': self.mu0, 'Q0': self.Q0, 'G': self.G, 'R': self.R,
+            return {'F': self.F, 'Q': self.Q, 'mu0': self.mu0, 'S0': self.S0, 'G': self.G, 'R': self.R,
                     'R_ss': R_ss, 'A': A, 'B': B, 'C': C}
         else:
-            return self.F, self.Q, self.mu0, self.Q0, self.G, self.R, R_ss, A, B, C
+            return self.F, self.Q, self.mu0, self.S0, self.G, self.R, R_ss, A, B, C
 
     def update_comp_param(self):
         """ Update component specific parameters, override in subclasses """
@@ -1015,7 +1074,9 @@ class StateSpaceModel(object):
     def initialize_priors(self):
         """ Initialize priors for each component in the object """
         assert self.components is not None, 'Cannot initialize priors when components is None.'
+        components_prefill = self.fill_components()
         priors = [x.initialize_priors() for x in self.components]
+        self.unfill_components(components_prefill)
         return priors
 
     def _initialize_priors_recursive_list(self, prior_value):
@@ -1103,11 +1164,11 @@ class StateSpaceModel(object):
         return mu0
 
     @staticmethod
-    def _m_update_q0(x_0_n=None, P_0_n=None, mu0=None):
-        """ Update initial state covariance -- Q0 """
-        Q0 = P_0_n + x_0_n[:, None] @ x_0_n[:, None].T \
+    def _m_update_S0(x_0_n=None, P_0_n=None, mu0=None):
+        """ Update initial state covariance -- S0 """
+        S0 = P_0_n + x_0_n[:, None] @ x_0_n[:, None].T \
             - x_0_n[:, None] @ mu0.T - mu0 @ x_0_n[:, None].T + mu0 @ mu0.T
-        return Q0
+        return S0
 
     @staticmethod
     def _m_update_g(y=None, x_t_n=None, P_t_n=None, h_t=None, C=None, D=None):
@@ -1125,7 +1186,7 @@ class StateSpaceModel(object):
         return G
 
     @staticmethod
-    def _m_estimate_scope(update_param=('F', 'Q', 'mu0', 'Q0', 'G', 'R'), keep_param=()):
+    def _m_estimate_scope(update_param=('F', 'Q', 'mu0', 'S0', 'G', 'R'), keep_param=()):
         """ Sort out the scopes of updates in m_estimate() """
         if 'F' not in update_param and 'Q' not in update_param:
             update_FQ = False
@@ -1134,14 +1195,14 @@ class StateSpaceModel(object):
         else:
             update_FQ = True
 
-        if 'mu0' not in update_param and 'Q0' not in update_param and 'G' not in update_param:
-            update_mu0Q0G = False
-        elif 'mu0' in keep_param and 'Q0' in keep_param and 'G' in keep_param:
-            update_mu0Q0G = False
+        if 'mu0' not in update_param and 'S0' not in update_param and 'G' not in update_param:
+            update_mu0S0G = False
+        elif 'mu0' in keep_param and 'S0' in keep_param and 'G' in keep_param:
+            update_mu0S0G = False
         else:
-            update_mu0Q0G = True
+            update_mu0S0G = True
 
-        return update_FQ, update_mu0Q0G
+        return update_FQ, update_mu0S0G
 
     @staticmethod
     def _m_compute_ss(ss_term, x_t_n, P_t_n=None, P_t_tmin1_n=None):
