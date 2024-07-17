@@ -13,14 +13,18 @@ jobs:
       matrix:
         os: ["ubuntu-latest", "macos-latest", "windows-latest"]
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     
     - name: Install Conda environment with Micromamba
-      uses: mamba-org/provision-with-micromamba@main
+      uses: mamba-org/setup-micromamba@v1
       with:
-        cache-env: true
-        environment-file: environment.yml
         environment-name: somata
+        create-args:
+          -c pytorch
+          -c conda-forge
+          --file .requirements/requirements-core.txt
+          --file .requirements/requirements-dev.txt
+        cache-environment: true
         
     - name: Micromamba info
       shell: bash -l {0}

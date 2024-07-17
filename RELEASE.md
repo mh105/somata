@@ -1,5 +1,17 @@
 # Release log
 
+## 0.5.2
+*July 2024*
+
+#### New features
+
+- Single source dependency specification into requirements-*.txt files
+- Use only pyproject.toml and remove setup.py/.cfg for building with setuptools
+
+#### Closed issues
+
+- Failed dependency resolution with pip install on Windows OS
+
 ## 0.5.1
 *July 2024*
 

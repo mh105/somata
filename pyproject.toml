@@ -1,3 +1,41 @@
 [build-system]
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "somata"
+description = "State-space Oscillator Modeling And Time-series Analysis"
+authors = [
+    {name = "Mingjian He", email = "mh1@stanford.edu"}
+]
+readme = {file = "README.md", content-type = "text/markdown"}
+license = {file = "LICENSE"}
+keywords = ["state-space", "oscillator", "time-series"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Utilities",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Scientific/Engineering :: Information Analysis"
+]
+requires-python = ">= 3.8"
+dynamic = ["version", "dependencies"]
+
+[tool.setuptools.dynamic]
+version = {attr = "somata.utils.version.VERSION"}
+dependencies = {file = [
+    ".requirements/requirements-core.txt",
+    ".requirements/requirements-build.txt"
+]}
+
+[project.urls]
+Homepage = "https://github.com/mh105/somata"
+Documentation = "https://github.com/mh105/somata"
+Repository = "https://github.com/mh105/somata"
+Issues = "https://github.com/mh105/somata/issues"
+Changelog = "https://github.com/mh105/somata/blob/main/RELEASE.md"

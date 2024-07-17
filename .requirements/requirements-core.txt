@@ -1,0 +1,12 @@
+# runtime dependent packages
+cmdstanpy
+codetiming
+colorcet
+joblib
+kneed
+matplotlib
+mne >= 1.6.0
+numpy >= 1.22.0
+scipy
+spectrum
+tqdm

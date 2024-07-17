@@ -1,0 +1,6 @@
+# development required packages
+ipdb
+pytest
+setuptools
+# additional runtime dependent packages with different names on conda channels
+pytorch

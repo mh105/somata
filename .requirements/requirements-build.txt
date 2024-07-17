@@ -1,0 +1,2 @@
+# additional runtime dependent packages for building the package
+torch >= 1.12.1
