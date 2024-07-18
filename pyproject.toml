@@ -29,8 +29,8 @@ dynamic = ["version", "dependencies"]
 [tool.setuptools.dynamic]
 version = {attr = "somata.utils.version.VERSION"}
 dependencies = {file = [
-    ".requirements/requirements-core.txt",
-    ".requirements/requirements-build.txt"
+    "requirements/requirements-core.txt",
+    "requirements/requirements-build.txt"
 ]}
 
 [project.urls]

@@ -22,8 +22,8 @@ jobs:
         create-args:
           -c pytorch
           -c conda-forge
-          --file .requirements/requirements-core.txt
-          --file .requirements/requirements-dev.txt
+          --file requirements/requirements-core.txt
+          --file requirements/requirements-dev.txt
         cache-environment: true
     
     - name: Micromamba info

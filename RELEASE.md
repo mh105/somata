@@ -1,5 +1,12 @@
 # Release log
 
+## 0.5.3
+*July 2024*
+
+#### New features
+
+- Improve install instructions for Windows OS and minor README fixes
+
 ## 0.5.2
 *July 2024*
 

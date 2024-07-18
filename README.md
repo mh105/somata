@@ -9,7 +9,7 @@ Classical exact and approximate inference algorithms are implemented and interfa
 Advanced neural oscillator modeling techniques are brought together to work synergistically.
 
 [![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg?kill_cache=1)](https://github.com/mh105/pot/commits/master)
-[![Version](https://img.shields.io/badge/Version-0.5.2-green?kill_cache=1)](https://github.com/mh105/somata/releases)
+[![Version](https://img.shields.io/badge/Version-0.5.3-green?kill_cache=1)](https://github.com/mh105/somata/releases)
 [![Last-Update](https://anaconda.org/conda-forge/somata/badges/latest_release_date.svg?kill_cache=1)](https://anaconda.org/conda-forge/somata)
 [![License: BSD 3-Clause Clear](https://img.shields.io/badge/License-BSD%203--Clause%20Clear-lightgrey.svg?kill_cache=1)](https://spdx.org/licenses/BSD-3-Clause-Clear.html)
 [![DOI](https://zenodo.org/badge/556083594.svg?kill_cache=1)](https://zenodo.org/badge/latestdoi/556083594)
@@ -36,40 +36,41 @@ Advanced neural oscillator modeling techniques are brought together to work syne
 Additional dependencies include [`scipy`](https://scipy.org), [`matplotlib`](https://matplotlib.org), [`cmdstanpy`](https://mc-stan.org/cmdstanpy/), and [`spectrum`](https://pyspectrum.readthedocs.io/en/latest/index.html).
 The source localization module also requires [`pytorch`](https://pytorch.org) and [`MNE-python`](https://mne.tools/stable/index.html).
 
-- Full package requirements for each release will be updated in the [`requirements-*.txt`](.requirements) files. The [`pyproject.toml`](pyproject.toml) file is specified to dynamically retrieve the metadata of dependencies for [`setuptools`](https://setuptools.pypa.io/en/latest/) during [`pip install`](https://pip.pypa.io/en/stable/cli/pip_install/) to verify that runtime dependent packages of compatible versions have been installed. When [`pip install`](https://pip.pypa.io/en/stable/cli/pip_install/) is used, missing dependencies will be fetched from [Python Package Index (PyPI)](https://pypi.org) and installed.
+- Full package requirements for each release will be updated in the [`requirements-*.txt`](requirements) files. The [`pyproject.toml`](pyproject.toml) file is specified to dynamically retrieve the metadata of dependencies for [`setuptools`](https://setuptools.pypa.io/en/latest/) during [`pip install`](https://pip.pypa.io/en/stable/cli/pip_install/) to verify that runtime dependent packages of compatible versions have been installed. When [`pip install`](https://pip.pypa.io/en/stable/cli/pip_install/) is used, missing dependencies will be fetched from [Python Package Index (PyPI)](https://pypi.org) and installed.
 
-- For development or installing `somata` into a [new conda environment](https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#creating-an-environment-with-commands), [`requirements-*.txt`](.requirements) files can also be [passed to `conda create` via the `--file` directive](https://docs.conda.io/projects/conda/en/latest/commands/create.html#named-arguments) to [create a new conda environment](https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#building-identical-conda-environments) with all and only the required packages installed in the new conda environment. When [`conda create`](https://docs.conda.io/projects/conda/en/latest/commands/create.html) or [`conda install`](https://docs.conda.io/projects/conda/en/latest/commands/install.html) is used, missing dependencies will be fetched from [conda channels](https://docs.conda.io/projects/conda/en/latest/user-guide/concepts/channels.html#channels) and installed.
+- For development or installing `somata` into a [new conda environment](https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#creating-an-environment-with-commands), [`requirements-*.txt`](requirements) files can also be [passed to `conda create` via the `--file` directive](https://docs.conda.io/projects/conda/en/latest/commands/create.html#named-arguments) to [create a new conda environment](https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#building-identical-conda-environments) with all and only the required packages installed in the new conda environment. When [`conda create`](https://docs.conda.io/projects/conda/en/latest/commands/create.html) or [`conda install`](https://docs.conda.io/projects/conda/en/latest/commands/install.html) is used, missing dependencies will be fetched from [conda channels](https://docs.conda.io/projects/conda/en/latest/user-guide/concepts/channels.html#channels) and installed.
 
 ### Some notes on package dependency requirements
 
-> The need for specifying dependencies arises in multiple ways for Python.
+The need for specifying dependencies arises in multiple ways for Python.
 There are non-negligible complexities due to the existence of different [build backends](https://packaging.python.org/en/latest/tutorials/packaging-projects/#choosing-a-build-backend) as well as different Python dependency management and packaging tools such as [`pdm`](https://pdm-project.org/en/latest/), [`poetry`](https://python-poetry.org), [`pip`](https://pip.pypa.io/en/stable/), [`conda`](https://docs.conda.io/projects/conda/en/stable/), etc.
 [One modern standard](https://peps.python.org/pep-0621/) is to [use a declarative config `pyproject.toml` file](https://setuptools.pypa.io/en/latest/userguide/quickstart.html#transitioning-from-setup-py-to-declarative-config) for package building and dependency management, which is becoming popular across build backends and frontends.
 
 In this project, we use [`pyproject.toml`](pyproject.toml) with the [`setuptools`](https://setuptools.pypa.io/en/latest/userguide/pyproject_config.html) backend for building `somata`, and we use [`conda`](https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#) to manage development environments.
 We have deliberately forgone the uses of [`setup.py`](https://packaging.python.org/en/latest/guides/distributing-packages-using-setuptools/#setup-py) and [`setup.cfg`](https://setuptools.pypa.io/en/latest/userguide/declarative_config.html) for package building and the use of [`environment.yml`](https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#creating-an-environment-from-an-environment-yml-file) for conda environment creation.
-Instead, we use a set of [`requirements-*.txt`](.requirements) files. These simple one-liner entries can be passed with `--file` directives into both [`setuptools`](https://setuptools.pypa.io/en/latest/userguide/pyproject_config.html#dynamic-metadata) and [`conda`](https://docs.conda.io/projects/conda/en/latest/commands/create.html#named-arguments), allowing single sourcing the [core dependency list](.requirements/requirements-core.txt).
+Instead, we use a set of [`requirements-*.txt`](requirements) files. These simple one-liner entries can be passed with `--file` directives into both [`setuptools`](https://setuptools.pypa.io/en/latest/userguide/pyproject_config.html#dynamic-metadata) and [`conda`](https://docs.conda.io/projects/conda/en/latest/commands/create.html#named-arguments), allowing single sourcing the [core dependency list](requirements/requirements-core.txt).
 They are also minimalistic in style, so one can easily re-write them into a desired dependency list, such as a [PEP 621](https://peps.python.org/pep-0621/) compliant `dependencies =` key under the [`[project]` table](https://packaging.python.org/en/latest/specifications/pyproject-toml/#dependencies-optional-dependencies) in [`pyproject.toml`](https://packaging.python.org/en/latest/guides/writing-pyproject-toml/#dependencies-and-requirements) that can be accepted across tools and backends.
 
 ## Install
 ```
 $ pip install somata
 ```
+or
+```
+$ conda install somata -c pytorch -c conda-forge
+```
+
+_When `somata` is installed into an [existing conda environment](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#viewing-a-list-of-your-environments), unmet dependencies are automatically searched, downloaded, and installed from the same repository of packages (from [PyPI](https://pypi.org/search/) with `pip install somata` or from [pytorch](https://anaconda.org/pytorch/repo) and [conda-forge](https://conda-forge.org/packages/) channels with `conda install somata -c pytorch -c conda-forge`) requested to provide the `somata` build distribution and its [dependencies](requirements)._
 
 ### conda-forge channel
-> There is a known issue with `conda install somata` on _Windows OS_ because the `pytorch` dependency is not available over the `conda-forge` channel for `win-64` builds. One should install `pytorch` first (see [torch requirement](#torch-requirement) below) with `conda install pytorch -c pytorch` and then install `somata` following this section.
-
 While [`pip install`](https://pip.pypa.io/en/stable/cli/pip_install/) usually works, [an alternative way](https://pythonspeed.com/articles/conda-vs-pip/) to install `somata` is through the [conda-forge](https://conda-forge.org/docs/index.html) [channel](https://docs.conda.io/projects/conda/en/latest/user-guide/concepts/channels.html#what-is-a-conda-channel), which utilizes [continuous integration (CI)](https://conda-forge.org/docs/user/ci-skeleton.html) [across OS platforms](https://conda-forge.org/docs/user/introduction.html#why-conda-forge).
 This means that [conda-forge packages](https://conda-forge.org/feedstock-outputs/index.html) are more [compatible with each other](https://conda-forge.org/docs/maintainer/adding_pkgs.html#avoid-external-dependencies) compared to [PyPI packages](https://pypi.org) installed via [`pip` by default](https://packaging.python.org/en/latest/tutorials/installing-packages/#installing-from-pypi).
-If `pip install somata` fails to resolve some dependencies, the [conda-forge somata](https://github.com/conda-forge/somata-feedstock) [feedstock](https://github.com/conda-forge/conda-feedstock#terminology) can be used to install `somata`:
-```
-$ conda install somata -c conda-forge
-```
-
-_When `somata` is installed into an [existing conda environment](https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#viewing-a-list-of-your-environments), unmet dependencies are automatically searched, downloaded, and installed from the same repository of packages (currently either [PyPI](https://pypi.org/search/) or [conda-forge channel](https://conda-forge.org/packages/)) requested to provide the `somata` build distribution._
+If `pip install somata` fails to resolve some dependencies, the [conda-forge somata](https://github.com/conda-forge/somata-feedstock) [feedstock](https://github.com/conda-forge/conda-feedstock#terminology) can be used to install `somata`.
 
 ### torch requirement
-If the [`torch`](https://pytorch.org) dependency is not resolved correctly for your [OS](https://whatsmyos.com) (such as installed the `cpu-only` version when GPU processing is needed), first [install `pytorch` manually](https://pytorch.org/get-started/locally/) in a [conda environment](https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html) that you want to install `somata` in, and then rerun either of the above two lines to install `somata`. Please be aware of [a common mixup](https://pypi.org/project/pytorch/) that PyTorch is distributed as [`torch` on PyPI](https://pypi.org/project/torch/) but as [`pytorch` on conda-forge](https://anaconda.org/conda-forge/pytorch/). If using [`conda`](https://pytorch.org/get-started/locally/) to install, Windows OS needs to download `pytorch` from the `pytorch` channel, as [`win-64` is not built on the `conda-forge`](https://anaconda.org/conda-forge/pytorch/) channel.
+If the [`torch`](https://pytorch.org) dependency is not resolved correctly for your [OS](https://whatsmyos.com) (such as installed the `cpu-only` version when GPU processing is needed), first [install `pytorch` manually](https://pytorch.org/get-started/locally/) in a [conda environment](https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html) that you want to install `somata` in, and then rerun either of the above two lines to install `somata`.
+Please be aware of [a common mixup](https://pypi.org/project/pytorch/) that PyTorch is distributed as [`torch` on PyPI](https://pypi.org/project/torch/) but as [`pytorch` on conda-forge](https://anaconda.org/conda-forge/pytorch/).
+If using [`conda`](https://pytorch.org/get-started/locally/) to install, Windows OS needs to download [`pytorch`](https://anaconda.org/pytorch/pytorch) from the [`pytorch`](https://anaconda.org/pytorch/repo) channel, as [`win-64` is not built on the `conda-forge`](https://anaconda.org/conda-forge/pytorch/) channel.
 
 ### (For development only)
 
@@ -88,7 +89,7 @@ If the [`torch`](https://pytorch.org) dependency is not resolved correctly for y
     _You may also directly [install `somata` in an existing conda environment](https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#using-pip-in-an-environment) by skipping this step._
 
     ``` $ cd <repo root directory with pyproject.toml> ```\
-    ``` $ mamba create -n somata -c pytorch -c conda-forge --file .requirements/requirements-core.txt --file .requirements/requirements-dev.txt ```\
+    ``` $ mamba create -n somata -c pytorch -c conda-forge --file requirements/requirements-core.txt --file requirements/requirements-dev.txt ```\
     ``` $ mamba activate somata ```
 
 - ### Install somata as a package in development mode
@@ -135,7 +136,7 @@ $$
 $$
 
 $$
-\mathbf{x}_0 \sim \mathcal{N}(\mathbf{\mu}_0, \mathbf{Q}_0)
+\mathbf{x}_0 \sim \mathcal{N}(\mathbf{\mu}_0, \mathbf{S}_0)
 $$
 
 Most of the constructor input arguments correspond to these model parameters, which are stored as instance attributes.
@@ -361,7 +362,7 @@ $$
 $$
 
 $$
-\begin{bmatrix}x_{0, 1}\newline x_{0, 2}\end{bmatrix} \sim \mathcal{N}(\mathbf{\mu}_0, \mathbf{Q}_0)
+\begin{bmatrix}x_{0, 1}\newline x_{0, 2}\end{bmatrix} \sim \mathcal{N}(\mathbf{\mu}_0, \mathbf{S}_0)
 $$
 
 $$
@@ -411,7 +412,7 @@ $$
 $$
 
 $$
-\begin{bmatrix}x_{0}\newline x_{-1}\newline x_{-2}\end{bmatrix} \sim \mathcal{N}(\mathbf{\mu}_0, \mathbf{Q}_0)
+\begin{bmatrix}x_{0}\newline x_{-1}\newline x_{-2}\end{bmatrix} \sim \mathcal{N}(\mathbf{\mu}_0, \mathbf{S}_0)
 $$
 
 $$
@@ -457,7 +458,7 @@ $$
 $$
 
 $$
-\mathbf{x}_0 \sim \mathcal{N}(\mathbf{\mu}_0, \mathbf{Q}_0)
+\mathbf{x}_0 \sim \mathcal{N}(\mathbf{\mu}_0, \mathbf{S}_0)
 $$
 
 `GeneralSSModel` is added to somata so that one can perform the most general Gaussian updates for a state-space model without special structures as specified in `OscillatorModel` and `AutoRegModel`. In other words, with non-sparse structures in the model parameters
