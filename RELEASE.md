@@ -1,5 +1,12 @@
 # Release log
 
+## 0.5.4
+*July 2024*
+
+#### New features
+
+- Add extra dependency_links for Windows OS install of spectrum and torch
+
 ## 0.5.3
 *July 2024*
 

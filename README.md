@@ -8,11 +8,11 @@ Basic state-space models are introduced as class objects for flexible manipulati
 Classical exact and approximate inference algorithms are implemented and interfaced as class methods.
 Advanced neural oscillator modeling techniques are brought together to work synergistically.
 
-[![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg?kill_cache=1)](https://github.com/mh105/pot/commits/master)
-[![Version](https://img.shields.io/badge/Version-0.5.3-green?kill_cache=1)](https://github.com/mh105/somata/releases)
-[![Last-Update](https://anaconda.org/conda-forge/somata/badges/latest_release_date.svg?kill_cache=1)](https://anaconda.org/conda-forge/somata)
-[![License: BSD 3-Clause Clear](https://img.shields.io/badge/License-BSD%203--Clause%20Clear-lightgrey.svg?kill_cache=1)](https://spdx.org/licenses/BSD-3-Clause-Clear.html)
-[![DOI](https://zenodo.org/badge/556083594.svg?kill_cache=1)](https://zenodo.org/badge/latestdoi/556083594)
+[![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg?kill_cache)](https://github.com/mh105/somata/commits/main)
+[![Version](https://img.shields.io/badge/Version-0.5.4-green?kill_cache)](https://github.com/mh105/somata/releases)
+[![Last-Update](https://anaconda.org/conda-forge/somata/badges/latest_release_date.svg?kill_cache)](https://anaconda.org/conda-forge/somata)
+[![License: BSD 3-Clause Clear](https://img.shields.io/badge/License-BSD%203--Clause%20Clear-lightgrey.svg?kill_cache)](https://spdx.org/licenses/BSD-3-Clause-Clear.html)
+[![DOI](https://zenodo.org/badge/556083594.svg?kill_cache)](https://zenodo.org/badge/latestdoi/556083594)
 
 ---
 
