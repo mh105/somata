@@ -47,7 +47,7 @@ jobs:
         environment-name: pip_env
         create-args:
           pip
-          cmdstanpy  # avoids having to run 'install_cmdstan' after pip install
+          cmdstanpy
           spectrum  # avoids building 'spectrum' on Windows that requires VC++ v14+
 
     - name: "- Pip install ${{ env.PACKAGE_NAME }}"
