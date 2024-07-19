@@ -1,0 +1,103 @@
+name: Release install tests
+
+on:
+  workflow_dispatch:
+  release:
+    types: [released]
+  push:
+    branches:
+      - main
+
+env:
+  PACKAGE_NAME: somata
+  RELEASE_JSON: https://api.github.com/repos/mh105/somata/releases/latest
+
+jobs:
+  install-unix:
+    name: install-on-${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: ["ubuntu-latest", "macos-latest", "windows-latest"]
+    defaults:
+      run:
+        shell: bash -el {0}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: "Curl the latest release version"
+      run: |
+        latest_version=$(curl -s ${{ env.RELEASE_JSON }} | grep "tag_name" | cut -d '"' -f4 | cut -c2-)
+        echo "latest_version=$latest_version" >> $GITHUB_ENV
+
+    - name: "[Test 1] Create environment for 'pip install' on Unix"
+      if: runner.os != 'Windows'
+      uses: mamba-org/setup-micromamba@v1
+      with:
+        environment-name: pip_env
+        create-args:
+          pip
+          cmdstanpy  # avoids having to run 'install_cmdstan' after pip install
+
+    - name: "[Test 1] Create environment for 'pip install' on Windows"
+      if: runner.os == 'Windows'
+      uses: mamba-org/setup-micromamba@v1
+      with:
+        environment-name: pip_env
+        create-args:
+          pip
+          cmdstanpy  # avoids having to run 'install_cmdstan' after pip install
+          spectrum  # avoids building 'spectrum' on Windows that requires VC++ v14+
+
+    - name: "- Pip install ${{ env.PACKAGE_NAME }}"
+      run: pip install ${{ env.PACKAGE_NAME }}
+
+    - name: "- Pip list"
+      run: |
+        python --version
+        pip list
+
+    - name: "- Verify installed package version"
+      run: |
+        installed_version=$(pip show ${{ env.PACKAGE_NAME }} | grep Version | cut -d' ' -f2)
+        if [ "$installed_version" != "${{ env.latest_version }}" ]; then
+          echo "Installed version from PyPI ($installed_version) does not match the latest release version on GitHub (${{ env.latest_version }})."
+          exit 1
+        else
+          echo "Installed version from PyPI ($installed_version) matches the latest release version on GitHub (${{ env.latest_version }})."
+        fi
+
+    - name: "- Run tests with pytest"
+      run: |
+        pip install pytest
+        pytest
+
+    - name: "[Test 2] Install ${{ env.PACKAGE_NAME }} with 'conda create'"
+      uses: mamba-org/setup-micromamba@v1
+      with:
+        environment-name: conda_env
+        create-args:
+          -c pytorch
+          -c conda-forge
+          ${{ env.PACKAGE_NAME }}
+
+    - name: "- Micromamba list"
+      run: |
+        python --version
+        micromamba list
+
+    - name: "- Verify installed package version"
+      run: |
+        installed_version=$(micromamba list ${{ env.PACKAGE_NAME }} | grep ${{ env.PACKAGE_NAME }} | awk '{print $2}')
+        if [ "$installed_version" != "${{ env.latest_version }}" ]; then
+          echo "Installed version from conda-forge ($installed_version) does not match the latest release version on GitHub (${{ env.latest_version }})."
+          exit 1
+        else
+          echo "Installed version from conda-forge ($installed_version) matches the latest release version on GitHub (${{ env.latest_version }})."
+        fi
+
+    - name: "- Run tests with pytest"
+      run: |
+        micromamba install pytest
+        pytest

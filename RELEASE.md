@@ -1,5 +1,14 @@
 # Release log
 
+## 0.5.5
+*July 2024*
+
+#### Closed issues
+
+- Remove the use of dependency_links as it is now deprecated and ignored by pip
+- Fix missing dependency of statsmodels required for diagnostic tests
+- Include .stan files from the pac module with build distribution
+
 ## 0.5.4
 *July 2024*
 

@@ -33,13 +33,8 @@ dependencies = {file = [
     "requirements/requirements-build.txt"
 ]}
 
-[options]
-# same as `pip install` with --index-url, which is needed for Windows OS
-# however, support has been dropped since pip version 19.0: https://setuptools.pypa.io/en/latest/deprecated/dependency_links.html
-dependency_links = [
-    "https://conda.anaconda.org/conda-forge/",
-    "https://download.pytorch.org/whl/cu121"
-]
+[tool.setuptools.package-data]
+"somata.pac.stan" = ["*.stan"]
 
 [project.urls]
 Homepage = "https://github.com/mh105/somata"

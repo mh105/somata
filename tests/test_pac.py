@@ -55,8 +55,8 @@ def generate_mvar_data(q, rng=np.random.default_rng(0), n=int(1e3)):
     :param n: length of the mvAR time series
     """
     data = [generate_ar3_data(rng) for i in range(q)]  # univariate AR(3) data for each variable
-    x = np.row_stack([x[0, :] for x, _ in data])
-    y = np.row_stack([y for _, y in data])  # make a mvAR(3) from three univariate AR(3) data
+    x = np.vstack([x[0, :] for x, _ in data])
+    y = np.vstack([y for _, y in data])  # make a mvAR(3) from three univariate AR(3) data
 
     return x, y
 
