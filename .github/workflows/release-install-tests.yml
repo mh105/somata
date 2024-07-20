@@ -1,4 +1,4 @@
-name: Release install tests
+name: Release install
 
 on:
   workflow_dispatch:
