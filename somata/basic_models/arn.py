@@ -14,7 +14,7 @@ from scipy.linalg import block_diag
 class AutoRegModel(Ssm):
     """
     AutoRegModel is a subclass of StateSpaceModel class dedicated
-    to autoregressive models of order n
+    to univairate autoregressive models of order n
     """
     type = 'arn'
     default_G = None
@@ -39,8 +39,19 @@ class AutoRegModel(Ssm):
         :param y: observed data (row major, can be multivariate)
         :param Fs: sampling frequency in Hz
         """
+        F = self._process_constructor_input(F)
+        Q = self._process_constructor_input(Q)
+
         # Autoregressive models can be constructed by directly specifying
-        # the autoregressive parameters {order, coeff, sigma2}
+        # the autoregressive parameters {coeff, sigma2}
+        if coeff is None:
+            if F is not None:
+                self.fill_arn_param(F=F, Q=Q)
+                coeff = self.coeff  # attempt to set coeff
+                sigma2 = self.sigma2  # attempt to set sigma2
+            else:
+                assert sigma2 is None and Q is None, 'No coefficient provided but state noise variance input is given.'
+
         if coeff is not None:
             if isinstance(coeff, numbers.Number):
                 coeff = (np.asanyarray([coeff], dtype=np.float64), )
@@ -70,8 +81,6 @@ class AutoRegModel(Ssm):
             if Q is not None:
                 assert (Q == Q_tmp).all(), 'Input state equation parameters do not agree with input Q.'  # type: ignore
             F, Q = F_tmp, Q_tmp
-        else:
-            assert sigma2 is None and Q is None, 'No coefficient provided but state noise variance input is given.'
 
         # Provide default values for mu0 and S0
         mu0 = np.zeros((F.shape[1], 1), dtype=np.float64) if mu0 is None and F is not None else mu0

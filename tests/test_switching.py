@@ -20,7 +20,7 @@ def test_switching():
     method_list = ('static', 'gpb1', 'gpb2', 'imm', '1991',
                    'a parp', 'ab parp', 'a pari', 'ab pari', 'a pars', 'ab pars')
     for method in method_list:
-        Mprob, fy_t = switching(o1, method=method)
+        Mprob, fy_t, _ = switching(o1, method=method)
         mat_results = _load_data(method + '_results.mat')
 
         # Verify that the results are close within tolerance
@@ -28,7 +28,7 @@ def test_switching():
         assert np.allclose(fy_t.flatten(), mat_results['fy_t'].flatten()), method + 'fy_t results are off.'
 
     # Test 1991 with 5 future steps of pseudo-smoothing
-    Mprob, fy_t = switching(o1, method='1991', future_steps=5)
+    Mprob, fy_t, _ = switching(o1, method='1991', future_steps=5)
     mat_results = _load_data('1991_future5_results.mat')
     assert np.allclose(Mprob.flatten(), mat_results['Mprob'].flatten()), '1991 ps=5 Mprob results are off.'
     assert np.allclose(fy_t.flatten(), mat_results['fy_t'].flatten()), '1991 ps=5 fy_t results are off.'

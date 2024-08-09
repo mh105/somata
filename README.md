@@ -8,11 +8,11 @@ Basic state-space models are introduced as class objects for flexible manipulati
 Classical exact and approximate inference algorithms are implemented and interfaced as class methods.
 Advanced neural oscillator modeling techniques are brought together to work synergistically.
 
-[![Release install tests](https://github.com/mh105/somata/actions/workflows/release-install-tests.yml/badge.svg?kill_cache)](https://github.com/mh105/somata/actions/workflows/release-install-tests.yml)
-[![Version](https://img.shields.io/badge/Version-0.5.5-green?kill_cache)](https://github.com/mh105/somata/releases)
-[![Last-Update](https://anaconda.org/conda-forge/somata/badges/latest_release_date.svg?kill_cache)](https://anaconda.org/conda-forge/somata)
-[![License: BSD 3-Clause Clear](https://img.shields.io/badge/License-BSD%203--Clause%20Clear-lightgrey.svg?kill_cache)](https://spdx.org/licenses/BSD-3-Clause-Clear.html)
-[![DOI](https://zenodo.org/badge/556083594.svg?kill_cache)](https://zenodo.org/badge/latestdoi/556083594)
+[![Release install tests](https://github.com/mh105/somata/actions/workflows/release-install-tests.yml/badge.svg)](https://github.com/mh105/somata/actions/workflows/release-install-tests.yml)
+[![Version](https://img.shields.io/badge/Version-0.5.6-green)](https://github.com/mh105/somata/releases)
+[![Last-Update](https://anaconda.org/conda-forge/somata/badges/latest_release_date.svg)](https://anaconda.org/conda-forge/somata)
+[![License: BSD 3-Clause Clear](https://img.shields.io/badge/License-BSD%203--Clause%20Clear-lightgrey.svg)](https://spdx.org/licenses/BSD-3-Clause-Clear.html)
+[![DOI](https://zenodo.org/badge/556083594.svg)](https://zenodo.org/badge/latestdoi/556083594)
 
 ---
 
@@ -483,7 +483,7 @@ Gen(1)<2440>
 ```
 
 ### For more in-depth working examples with the basic models in somata
-Look at the demo script [basic_models_demo_04092024.py](examples/basic_models_demo_04092024.py) and execute the code in this file _line by line_ to get familiar with the class objects and methods of `somata` basic models.
+We provide [a Jupyter notebook including three exercises](examples/somata_getting_started.ipynb) to help new users to get started with `somata`. After going through the exercises, one will become familiar with how the `somata` basic models are structured and intended to be used for state-space modeling. Running Kalman filtering, fixed-interval smoothing, and EM algorithm on `somata` basic models are also demonstrated in the notebook. The [iOsc+ and dOsc oscillator search methods](#3-oscillator-search-algorithms) described in the next section are showcased in the notebook as well, which serve as examples of algorithms that can be easily built in `somata`.
 
 ---
 
@@ -560,9 +560,9 @@ Soulat, H., Stephen, E. P., Beck, A. M., & Purdon, P. L. (2022). State space met
 
 ### 3. Oscillator Search Algorithms
 
-There are two similarly flavored univariate oscillator search methods in this module: iterative oscillator search (iOsc) and decomposition oscillator search (dOsc) algorithms.
+There are two similarly flavored univariate oscillator search methods in this module: iterative oscillator search (iOsc+) and decomposition oscillator search (dOsc) algorithms.
 
-- iOsc: for a well-commented example script, see [IterOsc_example.py](examples/IterOsc_example.py).
+- iOsc+: for a well-commented example script, see [IterOsc_example.py](examples/IterOsc_example.py).
 
 _**N.B.:** We recommend downsampling to 120 Hz or less, depending on the oscillations present in your data. Highly oversampled data will make it more difficult to identify oscillatory components, increase the computational time, and could also introduce high frequency noise._
 

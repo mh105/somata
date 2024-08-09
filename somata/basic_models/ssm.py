@@ -381,28 +381,37 @@ class StateSpaceModel(object):
         except (ImportError, ModuleNotFoundError):
             from somata import AutoRegModel
 
-        # F and Q parameters must be specified
-        assert self.F is not None, 'F parameter is not available to form Arn components.'
-        assert self.Q is not None, 'Q parameter is not available to form Arn components.'
-        assert np.all(self.Q[~np.eye(self.Q.shape[0], dtype=bool)] == 0), \
-            'Found non-zero non-diagonal elements when trying to auto-populate Arn components.'
+        if self.F is not None:
+            # Guess how many Arn components are contained in the model parameters
+            if self.Q is not None:
+                assert np.all(self.Q[~np.eye(self.Q.shape[0], dtype=bool)] == 0), \
+                    'Found non-zero non-diagonal elements when trying to auto-populate Arn components.'
+                Q_diag = np.diag(self.Q)
+                comp_nstates = np.diff(np.append(np.nonzero(Q_diag), len(Q_diag)))
+            else:
+                comp_nstates = AutoRegModel._guess_ar_order(self, F=self.F)
+                Q_diag = np.zeros(sum(comp_nstates))
+                Q_diag[np.cumsum(np.hstack(([0], comp_nstates[:-1])))] = AutoRegModel.default_sigma2
+                self.Q = np.diag(Q_diag)  # fill in self.Q with default sigma2
 
-        # Guess how many Arn components are contained in the model parameters
-        Q_diag = np.diag(self.Q)
-        comp_nstates = np.diff(np.append(np.nonzero(Q_diag), len(Q_diag)))
-        assert sum(comp_nstates) == self.nstate, 'Arn components do not have the correct total number of states.'
-        self.ncomp = len(comp_nstates)
+            # Make sure the state dimensions are correct
+            assert sum(comp_nstates) == self.nstate, 'Arn components do not have the correct total number of states.'
+            self.ncomp = len(comp_nstates)
 
-        # Create the autoregressive model components
-        self.components = []
-        for n in range(len(comp_nstates)):
-            start_idx = sum(comp_nstates[:n])
-            end_idx = sum(comp_nstates[:n+1])
-            coeff = self.F[start_idx, start_idx:end_idx]
-            sigma2 = self.Q[start_idx, start_idx]
-            mu0 = self.mu0[start_idx:end_idx] if self.mu0 is not None else None
-            S0 = self.Q[start_idx, start_idx] if self.S0 is not None else None
-            self.components.append(AutoRegModel(coeff=coeff, sigma2=sigma2, mu0=mu0, S0=S0))
+            # Create the autoregressive model components
+            self.components = []
+            for n in range(len(comp_nstates)):
+                start_idx = sum(comp_nstates[:n])
+                end_idx = sum(comp_nstates[:n+1])
+                coeff = self.F[start_idx, start_idx:end_idx]
+                sigma2 = self.Q[start_idx, start_idx]
+                mu0 = self.mu0[start_idx:end_idx] if self.mu0 is not None else None
+                S0 = self.Q[start_idx, start_idx] if self.S0 is not None else None
+                self.components.append(AutoRegModel(coeff=coeff, sigma2=sigma2, mu0=mu0, S0=S0))
+        else:
+            assert self.Q is None, 'No F provided but state noise covariance input is given.'
+            self.ncomp = 0
+            self.components = None
 
     def _auto_populate_gen_components(self):
         """ Initialize with a single general state-space model during constructor """
@@ -440,13 +449,13 @@ class StateSpaceModel(object):
         self.components = comp_list
         self.comp_nstates = [x.default_G.shape[1] for x in self.components]
 
-        # Use the Ssm.concat_() method to concatenate parameters from components
-        concat_model = self.components[0]
-        for n in range(1, self.ncomp):
-            concat_model = StateSpaceModel.concat_(concat_model, self.components[n], skip_components=True)
+        # Use the Ssm.concat_() method to concatenate parameters from components in order to fill them in
+        concat_model = components[0]
+        for n in range(1, len(components)):
+            concat_model = StateSpaceModel.concat_(concat_model, components[n], skip_components=True)
 
         # Fill in model parameters if available from components
-        self._setattr_when_not_none(concat_model, ('F', 'Q', 'mu0', 'S0', 'R', 'Fs'))
+        self._setattr_when_not_none(concat_model, ('F', 'Q', 'mu0', 'S0', 'G', 'R', 'Fs'))
 
         # Fill in observed data if available from components
         self._check_observed_data(concat_model)
@@ -467,6 +476,7 @@ class StateSpaceModel(object):
 
     def _initialize_observation_matrix(self, G):
         """ Initialize the observation matrix instance attribute during constructor """
+        G = self.G if G is None else G
         if G is None:
             if self.ncomp > 0:
                 nchannel = self.y.shape[0] if self.y is not None else 1  # default to one observation channel
@@ -480,6 +490,7 @@ class StateSpaceModel(object):
     def _initialize_observation_noise(self, R):
         """ Initialize the observation noise covariance matrix during constructor """
         # Update R if not provided but can be estimated from y and Fs
+        R = self.R if R is None else R
         if R is None and self.y is not None and self.Fs is not None:
             R = estimate_r(y=self.y, Fs=self.Fs, freq_cutoff=self.Fs / 2 - 20)
 
@@ -776,6 +787,41 @@ class StateSpaceModel(object):
         components = self.components if components is None else components
         default_Q = block_diag(*[x.get_default_q(components=x, E=E) for x in components])
         return default_Q
+
+    def simulate(self, duration=10):
+        """
+        Simulate observed data from a state-space model.
+
+        Parameters
+        ----------
+        self : StateSpaceModel
+            A SOMATA state-space model instance.
+        duration : int
+            Simulation duration in seconds. Default: 10 seconds.
+
+        Returns
+        -------
+        x : ndarray
+            Hidden states.
+        y : ndarray
+            Simulated observed data.
+        """
+        # total number of samples in the simulated time series
+        T = int(duration * self.Fs)
+
+        # initialize tallies for the hidden states and observations
+        x = np.zeros((self.nstate, T + 1))  # one sample longer than y
+        y = np.zeros((self.nchannel, T))
+
+        # initial state at t=0
+        x[:, 0] = np.random.multivariate_normal(np.squeeze(self.mu0), self.S0)
+
+        # iterate through the rest of time points and generate observations
+        for ii in range(1, T + 1):
+            x[:, ii] = self.F @ x[:, ii - 1] + np.random.multivariate_normal(np.zeros(self.nstate), self.Q)
+            y[:, ii - 1] = self.G @ x[:, ii] + np.random.normal(np.zeros(self.nchannel), self.R)
+
+        return x, y
 
     @staticmethod
     def _process_constructor_input(a):

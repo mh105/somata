@@ -4,6 +4,7 @@ Author: Mingjian He <mh1@stanford.edu>
 Testing functions for exact inference signal processing methods in somata/exact_inferences/dp_func.py
 """
 
+import torch
 import numpy as np
 from codetiming import Timer
 from test_load_data import _load_data  # type: ignore
@@ -195,7 +196,6 @@ def test_inverse(dim=128):
 
 def test_inverse_torch(dim=128, atol=1e-3):
     from somata.exact_inference import inverse_torch
-    import torch
 
     np.random.seed(1)
 
@@ -263,7 +263,6 @@ def test_logdet():
 
 def test_logdet_torch(rtol=1e-3, atol=1e-3):
     from somata.exact_inference import logdet_torch
-    import torch
 
     np.random.seed(1)
 

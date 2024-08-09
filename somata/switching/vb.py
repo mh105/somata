@@ -167,7 +167,7 @@ class VBSwitchModel(object):
 
         """ Switching linear segmentation """
         # Provide different segmentation methods (soft, semi-hard (VB h_t_m), hard)
-        h_t_m_soft, fy_t = switching(self.ssm_array, method='ab pari', A=self.A)  # soft segmentation
+        h_t_m_soft, fy_t, _ = switching(self.ssm_array, method='ab pari', A=self.A)  # soft segmentation
         _, h_t_m_hard = viterbi(self.A, fy_t, ignore_numerr=True)  # apply Viterbi on parallel interpolated density
 
         """ EOF """

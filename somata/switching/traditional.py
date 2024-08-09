@@ -53,7 +53,10 @@ def switching(ssm_array, y=None, method='static', dwell_prob=0.99, A=None,
     :returns:
         - Mprob: posterior model probabilities
         - fy_t: conditional density of y given t=1...t-1
+        - logL: log likelihood of the observed data under the switching HMM
+                only avaialble if HMM_smooth is not None
     """
+    logL = None
     ssm_array, K, T = Ssm.setup_array(ssm_array, y=y)
 
     # Initial guess of transition probability matrix A for HMM
@@ -77,7 +80,7 @@ def switching(ssm_array, y=None, method='static', dwell_prob=0.99, A=None,
     elif method == '1991':
         Mprob, fy_t = _1991(ssm_array, K, T, A, future_steps=future_steps)
     elif 'par' in method:
-        Mprob, fy_t, HMM_smooth = _parallel(ssm_array, K, T, A, method, fix_prior=fix_prior, mimic1991=mimic1991)
+        Mprob, fy_t, HMM_smooth, logL = _parallel(ssm_array, K, T, A, method, fix_prior=fix_prior, mimic1991=mimic1991)
     else:
         raise Exception('Unrecognized switching inference method.')
 
@@ -87,11 +90,11 @@ def switching(ssm_array, y=None, method='static', dwell_prob=0.99, A=None,
     # Apply forward-backward algorithm to fy_t if specified
     if HMM_smooth is not None:
         if HMM_smooth == 'a':  # alpha filtering
-            Mprob, *_ = forward_backward(A, fy_t)
+            Mprob, _, _, logL = forward_backward(A, fy_t)
         elif HMM_smooth == 'ab':  # alpha-beta smoothing
-            _, Mprob, *_ = forward_backward(A, fy_t)
+            _, Mprob, _, logL = forward_backward(A, fy_t)
 
-    return Mprob, fy_t
+    return Mprob, fy_t, logL
 
 
 def _static(ssm_array, K, T):
@@ -676,24 +679,26 @@ def _parallel(ssm_array, K, T, A, method, fix_prior=False, mimic1991=False):
         # If we try to use fy_t as an approximation of fy_j(t|t-1)
         # in the 1991 method, we need a slightly different
         # initialization of the alpha state at t=1, therefore we
-        # cannot use te dedicated implementation of forward-backward
+        # cannot use the dedicated implementation of forward-backward
         # algorithm as the other traditional methods. We implement
         # the associated alpha filtering below.
         HMM_smooth = None
+        logL = np.zeros(T)
 
         if fix_prior:
             assert len(fix_prior) == K, 'Fix prior needs to provide the prior for each model.'  # type: ignore
             # A fixed predictor / prior lacks temporal continuity, not MC anymore
             predictor = fix_prior  # this is provided as an option to mimic the 1991 method
 
-        norm_a = np.zeros((K, T), dtype=np.float64)  # (index 1 corresponds to t=0)
+        norm_a = np.zeros((K, T+1), dtype=np.float64)  # (index 1 corresponds to t=0)
         norm_a[:, 0] = np.ones(K, dtype=np.float64) / K  # equivalent to pi_0_0 in the 1991 method
-        for ii in range(1, T):  # t=1 -> t=T
+        for ii in range(1, T+1):  # t=1 -> t=T
             if not fix_prior:
                 predictor = A @ norm_a[:, ii-1]  # equivalent to Mprob_prior in the 1991 method
             # noinspection PyUnboundLocalVariable
             a = fy_t[:, ii-1] * predictor
             norm_a[:, ii] = a / a.sum()
+            logL[ii-1] = np.log(a.sum())  # one-step predictive log likelihood
 
         # This is equivalent to the 1991 approach using custom hidden state
         # estimates to approximate fy_j(t|t-1) and doing the same filtering
@@ -703,8 +708,9 @@ def _parallel(ssm_array, K, T, A, method, fix_prior=False, mimic1991=False):
         # Invoke dedicated forward-backward algorithm with more conventional initialization
         Mprob = None
         HMM_smooth = method.split()[0]
+        logL = None
 
-    return Mprob, fy_t, HMM_smooth
+    return Mprob, fy_t, HMM_smooth, logL
 
 
 def _compute_fy_t(ssm_array, x_t_all, P_t_all, y=None):

@@ -1,4 +1,4 @@
-name: Release install tests
+name: Release install
 
 on:
   workflow_dispatch:
@@ -10,11 +10,11 @@ on:
 
 env:
   PACKAGE_NAME: somata
-  RELEASE_JSON: https://api.github.com/repos/mh105/somata/releases/latest
+  RELEASE_HTTP: https://github.com/mh105/somata/releases/latest
 
 jobs:
-  install-unix:
-    name: install-on-${{ matrix.os }}
+  pip-install:
+    name: pip-install-${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -26,12 +26,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: "Curl the latest release version"
-      run: |
-        latest_version=$(curl -s ${{ env.RELEASE_JSON }} | grep "tag_name" | cut -d '"' -f4 | cut -c2-)
-        echo "latest_version=$latest_version" >> $GITHUB_ENV
-
-    - name: "[Test 1] Create environment for 'pip install' on Unix"
+    - name: "Create environment for 'pip install' on Unix"
       if: runner.os != 'Windows'
       uses: mamba-org/setup-micromamba@v1
       with:
@@ -40,27 +35,38 @@ jobs:
           pip
           cmdstanpy  # avoids having to run 'install_cmdstan' after pip install
 
-    - name: "[Test 1] Create environment for 'pip install' on Windows"
+    - name: "Create environment for 'pip install' on Windows"
       if: runner.os == 'Windows'
       uses: mamba-org/setup-micromamba@v1
       with:
         environment-name: pip_env
         create-args:
           pip
-          cmdstanpy  # avoids having to run 'install_cmdstan' after pip install
+          cmdstanpy
+          numpy<2
           spectrum  # avoids building 'spectrum' on Windows that requires VC++ v14+
 
     - name: "- Pip install ${{ env.PACKAGE_NAME }}"
       run: pip install ${{ env.PACKAGE_NAME }}
 
     - name: "- Pip list"
+      run: pip list
+
+    - name: "- Get the latest release version"
       run: |
         python --version
-        pip list
+        latest_version=$(python -c "import requests; url = '${{ env.RELEASE_HTTP }}'; r = requests.get(url); print(r.url.split('/')[-1])" | awk '{print substr($0, 2)}')
+        if [ -n "$latest_version" ]; then
+          echo "latest_version extracted from GitHub releases: $latest_version"
+          echo "latest_version=$latest_version" >> $GITHUB_ENV
+        else
+          echo "failed to retrieve latest_version."
+          exit 1 
+        fi
 
     - name: "- Verify installed package version"
       run: |
-        installed_version=$(pip show ${{ env.PACKAGE_NAME }} | grep Version | cut -d' ' -f2)
+        installed_version=$(pip show ${{ env.PACKAGE_NAME }} | grep Version | awk '{print $2}')
         if [ "$installed_version" != "${{ env.latest_version }}" ]; then
           echo "Installed version from PyPI ($installed_version) does not match the latest release version on GitHub (${{ env.latest_version }})."
           exit 1
@@ -71,9 +77,22 @@ jobs:
     - name: "- Run tests with pytest"
       run: |
         pip install pytest
-        pytest
+        pytest -vv
 
-    - name: "[Test 2] Install ${{ env.PACKAGE_NAME }} with 'conda create'"
+  conda-install:
+    name: conda-install-${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: ["ubuntu-latest", "macos-latest", "windows-latest"]
+    defaults:
+      run:
+        shell: bash -el {0}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: "Install ${{ env.PACKAGE_NAME }} with 'conda create'"
       uses: mamba-org/setup-micromamba@v1
       with:
         environment-name: conda_env
@@ -82,10 +101,17 @@ jobs:
           -c conda-forge
           ${{ env.PACKAGE_NAME }}
 
-    - name: "- Micromamba list"
+    - name: "- Get the latest release version"
       run: |
         python --version
-        micromamba list
+        latest_version=$(python -c "import requests; url = '${{ env.RELEASE_HTTP }}'; r = requests.get(url); print(r.url.split('/')[-1])" | awk '{print substr($0, 2)}')
+        if [ -n "$latest_version" ]; then
+          echo "latest_version extracted from GitHub releases: $latest_version"
+          echo "latest_version=$latest_version" >> $GITHUB_ENV
+        else
+          echo "failed to retrieve latest_version."
+          exit 1 
+        fi
 
     - name: "- Verify installed package version"
       run: |
@@ -100,4 +126,4 @@ jobs:
     - name: "- Run tests with pytest"
       run: |
         micromamba install pytest
-        pytest
+        pytest -vv

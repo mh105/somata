@@ -1,5 +1,18 @@
 # Release log
 
+## 0.5.6
+*August 2024*
+
+#### New features
+
+- Add more example Jupyter notebooks to demonstrate package syntaxes and algorithms
+
+#### Closed issues
+
+- SOMATA basic model classes now perform more reliably and consistently, including automatic parsing of parameters to generate components
+- Multitaper spectrogram implementation used functions deprecated in Numpy 2.0
+- Observation matrix and noise covariance ignored if initializing through components
+
 ## 0.5.5
 *July 2024*
 

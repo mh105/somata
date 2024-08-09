@@ -1,33 +1,40 @@
+# Author: Mingjian He <mh1@stanford.edu>
 from somata.oscillator_search import DecomposedOscillatorModel as DecOsc
-from somata.oscillator_search.helper_functions import random, simulate_matsuda, sim_to_osc_object
+from somata import OscillatorModel as Osc
+import numpy as np
 
-random.seed(1)  # to ensure reproducible results
-fs = 100  # sampling frequency (Hz)
-osc1 = {'a': 0.996, 'q': 0.4, 'f': 0.1}  # set simulating parameters for slow oscillation
-osc2 = {'a': 0.95, 'q': 0.2, 'f': 10}  # set simulating parameters for alpha oscillation
-y, param_list, ob_noise = simulate_matsuda([osc1, osc2], R=1.2, Fs=fs, T=10)
-sim_osc0, sim_x0 = sim_to_osc_object(y, param_list)  # save simulations as Osc object to pass into plotting functions
+# Simulate 10-s data with two oscillators, one slow and one alpha frequency
+np.random.seed(1)  # to ensure reproducible results
+o1 = Osc(a=[0.996, 0.95], freq=[0.1, 10], sigma2=[0.4, 0.2], R=1.2, Fs=100)
+x, y = o1.simulate(duration=10)
 
-# Initialize Decomposed Oscillator object
-do1 = DecOsc(y, fs, noise_start=None, osc_range=7)
-# noise_start determines the frequency above which is used to estimate the observation noise; default: Nyquist - 20 Hz
-# osc_range is maximum number of total oscillators, set to default
+# Initialize a DecomposedOscillatorModel object
+do1 = DecOsc(y, o1.Fs, noise_start=None, osc_range=7)
+# noise_start determines the frequency above which is used to estimate the observation noise; default: (Nyquist - 20 Hz)
+# osc_range is maximum number of total oscillators; default: 7
 
-# Run through decomposed oscillators to fit model
-do1.iterate(plot_fit=True)
-# plot_fit=True plots fitted spectrum at each decomposition of oscillators
+# Plot multitaper spectrogram, mean spectrum, and raw data time trace
+_ = do1.plot_mtm()
+_ = do1.plot_trace()
 
-# Plot frequency domain (from parameters and from estimated x_t_n)
-for version in ['theoretical', 'actual']:
-    _ = do1.get_knee_osc().visualize_freq(version, y=y, sim_osc=sim_osc0, sim_x=sim_x0)
+# Run through the set of decomposed oscillators to find the best model
+do1.iterate(plot_fit=True)  # this is the dOsc algorithm
+# plot_fit=True plots fitted theoretical spectra during each iteration
 
-# Plot time domain estimated x_t
-_ = do1.get_knee_osc().visualize_time(y=y, sim_x=sim_x0)
+# Inspect the selected model
+print(do1.get_knee_osc())
 
-# Plot likelihood and selected model (may not be the highest likelihood)
+# Plot log-likelihood and the selected model (may not be the highest)
 _ = do1.plot_log_likelihoods()
 
-# Other helpful plotting methods
-_ = do1.plot_mtm()  # plot multitaper spectrogram and mean spectrum
-_ = do1.plot_trace()  # plot raw time trace
-_ = do1.plot_fit_spectra()  # plot fitted spectra (equivalent to calling .visualize_freq(version) manually)
+# Plot estimated hidden states x_t in the frequency domain
+_ = do1.plot_fit_spectra(sim_osc=o1, sim_x=x[:, 1:])
+# sim_osc is the true OscillatorModel used for the data generation (optional)
+# sim_x is the true hidden states x_t underlying the data generation (optional)
+
+# Plot estimated hidden states x_t in the time domain
+_ = do1.plot_fit_traces(sim_x=x[:, 1:])
+# sim_x is the true hidden states x_t underlying the data generation (optional)
+
+# Plot diagnostics of residuals and run statistical tests on autocorrelations and normality
+do1.diagnose_residual()

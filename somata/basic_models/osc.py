@@ -48,6 +48,9 @@ class OscillatorModel(Ssm):
         :param y: observed data (row major, can be multivariate)
         :param Fs: sampling frequency in Hz
         """
+        F = self._process_constructor_input(F)
+        Q = self._process_constructor_input(Q)
+
         # Verify that components are of valid type
         assert components == 'Osc' or \
                all([x.type == 'osc' for x in components]), 'Encountered non-osc type component.'  # type: ignore
@@ -467,10 +470,10 @@ class OscillatorModel(Ssm):
 
         elif sim_osc is None and sim_x is not None:
             raise RuntimeError('Do you want to plot empirical spectra of simulated data? If yes,'
-                               'input sim_osc object in addition to latent states sim_x.')
+                               'input sim_osc object in addition to hidden states sim_x.')
         elif sim_osc is not None and sim_x is None:
             raise RuntimeError('Do you want to plot empirical spectra of simulated data? If yes,'
-                               'input latent states as sim_x.')
+                               'input hidden states as sim_x.')
 
         # Final axes adjustment
         ax.legend()
@@ -487,7 +490,7 @@ class OscillatorModel(Ssm):
     def visualize_time(self, y=None, plot_ospe=False, ospe_ylim=None, sim_x=None, xlim=None, figsize=(8, 8)):
         """
         Visualize time series from fitted oscillations.
-        sim_x is a 2 dim array (2*ncomp, T) containing the simulated latent states
+        sim_x is a 2 dim array (2*ncomp, T) containing the simulated hidden states
         """
         import matplotlib.pyplot as plt
         colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:pink', 'tab:olive', 'tab:cyan']

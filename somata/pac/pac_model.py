@@ -214,7 +214,7 @@ def optimize_arp(y: ndarray, p: int, epsilon: float = 1e-7):
     """
     For a set of observations, compute the optimal observation noise variance and resulting AR(p) parameters.
 
-    :param y: Array of n observations of d varibles, of shape (d, n).
+    :param y: Array of n observations of d variables, of shape (d, n).
     :param p: Order of AR model.
     :param epsilon: Epsilon to prevent singular matrices, as scipy optimizes over closed intervals, defaults to 1e-7.
 

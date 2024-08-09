@@ -52,19 +52,16 @@ class DecomposedOscillatorModel(object):
         """ Re-instantiate the instance object with the same data """
         self.__init__(self.added_osc[0].y, self.added_osc[0].Fs, noise_start=self.noise_start, osc_range=self.osc_range)
 
-    def iterate(self, freq_res=None, keep_param=(), preiterate=False,
-                R_hp=0.1, model_select='knee', plot_fit=False, verbose=None):
+    def iterate(self, keep_param=(), preiterate=False, R_hp=0.1, model_select='knee', plot_fit=False):
         """
         Decomposed Oscillator Search (dOsc) Algorithm
 
         Inputs:
         :param self: DecomposedOscillatorModel class instance
-        :param freq_res: not used but kept for inheritance by the OscillatorModel class
         :param keep_param: a tuple of strings for parameters to keep and not update
         :param preiterate: prefit the oscillators to be added and sort in descending order of peak PSD
         :param R_hp: hyperparameter in Inverse Gamma Prior determining weight on prior mode compared to MLE
         :param model_select: 'knee', 'max', or 'ebic' to select with the knee, maximum likelihood, or minimum BIC
-        :param plot_fit: plot the fitted oscillator spectra at each iteration
         :param verbose: not used but kept for inheritance by the OscillatorModel class
         """
         # Prefit the AR eigenmodes as oscillators and sort them in descending order of peak PSD
@@ -255,18 +252,24 @@ class DecomposedOscillatorModel(object):
         fig = plot_pacf(self.get_residual(), Fs=self.get_knee_osc().Fs, ax=ax)
         return fig
 
-    def plot_fit_spectra(self, bw=1, ax=(None, None)):
+    def plot_fit_spectra(self, bw=1, sim_osc=None, sim_x=None, ax=(None, None)):
         """ Plot the fitted theoretical and empirical spectra """
         selected_osc = self.get_knee_osc()
         if ax[0] is not False:
-            fig_theo = selected_osc.visualize_freq('theoretical', bw=bw, y=self.added_osc[0].y, ax=ax[0])
+            fig_theo = selected_osc.visualize_freq('theoretical', bw=bw, y=self.added_osc[0].y,
+                                                   sim_osc=sim_osc, sim_x=sim_x, ax=ax[0])
         else:
             fig_theo = None
         if ax[1] is not False:
-            fig_empi = selected_osc.visualize_freq('actual', bw=bw, y=self.added_osc[0].y, ax=ax[1])
+            fig_empi = selected_osc.visualize_freq('actual', bw=bw, y=self.added_osc[0].y,
+                                                   sim_osc=sim_osc, sim_x=sim_x, ax=ax[1])
         else:
             fig_empi = None
         return fig_theo, fig_empi
+
+    def plot_fit_traces(self, sim_x=None):
+        """ Plot the fitted hidden state time traces """
+        return self.get_knee_osc().visualize_time(y=self.added_osc[0].y, sim_x=sim_x)
 
     def plot_log_likelihoods(self, ax=None):
         """ Plot the trajectory of log likelihoods from iterations """

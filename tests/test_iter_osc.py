@@ -5,21 +5,19 @@ Testing functions for the iOsc algorithm in somata/oscillator_search/iter_osc.py
 """
 
 from somata.oscillator_search import IterativeOscillatorModel as IterOsc
-from somata.oscillator_search.helper_functions import (
-    random, np, simulate_matsuda, sim_to_osc_object, innovations_wrapper)
+from somata.oscillator_search.helper_functions import innovations_wrapper
+from somata import OscillatorModel as Osc
 from test_load_data import _load_data  # type: ignore
+import numpy as np
 import pickle
 
 
 def test_iterative_osc(plot_on=False):
-    random.seed(1)
-    fs = 100
-    osc1 = {'a': 0.996, 'q': 0.4, 'f': 0.1}
-    osc2 = {'a': 0.95, 'q': 0.2, 'f': 10}
-    y, param_list, ob_noise = simulate_matsuda([osc1, osc2], R=1.2, Fs=fs, T=10)
-    sim_osc0, sim_x0 = sim_to_osc_object(y, param_list)
+    np.random.seed(1)
+    o1 = Osc(a=[0.996, 0.95], freq=[0.1, 10], sigma2=[0.4, 0.2], R=1.2, Fs=100)
+    x, y = o1.simulate(duration=10)
 
-    io_test = IterOsc(y, fs)
+    io_test = IterOsc(y, o1.Fs)
     io_test.iterate(plot_fit=plot_on)
 
     # Verify diagnostic statistical tests
@@ -38,10 +36,10 @@ def test_iterative_osc(plot_on=False):
     if plot_on:
         # Plot frequency domain (from parameters and from estimated x_t_n)
         for version in ['theoretical', 'actual']:
-            _ = io_test.get_knee_osc().visualize_freq(version, y=y, sim_osc=sim_osc0, sim_x=sim_x0)
+            _ = io_test.get_knee_osc().visualize_freq(version, y=y, sim_osc=o1, sim_x=x[:, 1:])
 
         # Plot time domain estimated x_t
-        _ = io_test.get_knee_osc().visualize_time(y=y, sim_x=sim_x0)
+        _ = io_test.get_knee_osc().visualize_time(y=y, sim_x=x[:, 1:])
 
         # Plot likelihood and selected model (may not be the highest likelihood)
         _ = io_test.plot_log_likelihoods()
@@ -57,6 +55,9 @@ def test_iterative_osc(plot_on=False):
 
         # Plot fitted spectra (equivalent to calling .visualize_freq(version) manually)
         _ = io_test.plot_fit_spectra()
+
+        # Plot fitted traces (equivalent to calling .visualize_time() manually)
+        _ = io_test.plot_fit_traces()
 
         # Plot the residual spectrum shifted by white noise processes
         _ = io_test.plot_residual()
